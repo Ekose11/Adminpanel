@@ -1,1 +1,24 @@
-{% extends "base.html" %}{% block content %}<div class="hero"><div class="title">Boztek Dashboard</div><div class="subtitle">Tek firma sistemi • PDF aylık rapor aktif</div></div><div class="stats"><div class="stat"><div class="num">{{stats.personel}}</div><div class="label">Personel</div></div><div class="stat"><div class="num">{{stats.izin}}</div><div class="label">İzin</div></div><div class="stat"><div class="num">{{stats.avans}}</div><div class="label">Avans</div></div><div class="stat"><div class="num">{{stats.logs}}</div><div class="label">Giriş/Çıkış</div></div></div>{% endblock %}
+body{margin:0;font-family:Arial;background:#eef2f7;color:#111827;font-size:18px}
+a{text-decoration:none;color:inherit}
+.layout{display:flex;min-height:100vh}
+.sidebar{width:290px;background:linear-gradient(180deg,#111827,#1e293b);color:white;padding:24px 18px;position:fixed;top:0;bottom:0;left:0;overflow:auto}
+.logo{font-size:34px;font-weight:900;margin-bottom:20px}
+.nav a{display:block;padding:15px 16px;border-radius:18px;margin-bottom:10px;background:rgba(255,255,255,.08);font-weight:900}
+.main{margin-left:290px;width:calc(100% - 290px);padding:30px}
+.hero,.card{background:white;border-radius:28px;padding:24px;margin-bottom:22px;box-shadow:0 10px 28px rgba(15,23,42,.08)}
+.hero{background:linear-gradient(135deg,#fff,#e0f2fe)}
+.title{font-size:40px;font-weight:900}.subtitle{color:#64748b;margin-top:8px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.stat{background:white;border-radius:25px;padding:22px}.num{font-size:42px;font-weight:900}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:13px;border-bottom:1px solid #e5e7eb;text-align:left}
+.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}.field label{font-weight:900;display:block;margin-bottom:6px}.field input,.field select{width:100%;padding:14px;border:1px solid #cbd5e1;border-radius:15px}
+.btn{border:0;border-radius:15px;padding:12px 17px;background:#2563eb;color:white;font-weight:900;display:inline-block;cursor:pointer}.btn-red{background:#dc2626}.btn-green{background:#16a34a}.btn-orange{background:#f59e0b}
+.badge{padding:7px 11px;border-radius:99px;font-weight:900;font-size:13px}.blue{background:#dbeafe;color:#1d4ed8}.green{background:#dcfce7;color:#166534}.orange{background:#fef3c7;color:#92400e}.red{background:#fee2e2;color:#991b1b}
+.flash{background:#dcfce7;padding:13px;border-radius:15px;margin-bottom:15px;color:#166534;font-weight:900}
+.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111827}.login-card{width:420px;background:white;border-radius:30px;padding:30px}.login-card input{width:100%;padding:15px;margin-bottom:12px;border-radius:15px;border:1px solid #cbd5e1}
+.qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.qr-card{text-align:center;border:1px solid #e5e7eb;border-radius:22px;padding:18px;background:#fff}.qr-card img{width:180px;height:180px}.qr-name{font-size:22px;font-weight:900}.qr-code{font-size:13px;color:#64748b;word-break:break-all}
+@media print{.sidebar,.hero .subtitle,.nav,.btn{display:none}.main{margin:0;width:100%;padding:0}.qr-grid{grid-template-columns:repeat(3,1fr)}.card,.hero{box-shadow:none}}
+@media(max-width:900px){.sidebar{position:relative;width:auto}.main{margin-left:0;width:auto}.layout{display:block}.stats,.form-grid,.qr-grid{grid-template-columns:1fr}}
+.qr-card{background:linear-gradient(145deg,#07111f,#10233d)!important;color:#fff!important;border:1px solid rgba(255,255,255,.16)!important;box-shadow:0 18px 40px rgba(2,6,23,.22)}
+.qr-card img{background:#fff;padding:12px;border-radius:20px;width:200px!important;height:200px!important;margin:12px auto;display:block}
+.qr-logo{width:46px;height:46px;margin:0 auto 8px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#38bdf8,#2563eb);font-size:24px}
+.qr-dept{color:#cbd5e1;margin-top:4px}.qr-hint{font-size:12px;color:#93c5fd;margin-top:8px}.qr-code{color:#94a3b8!important}
