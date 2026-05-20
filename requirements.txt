@@ -1,4 +1,1 @@
-Flask==3.0.3
-gunicorn==22.0.0
-pg8000==1.31.2
-reportlab==4.2.2
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>QR Barkod</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head><body class="qr-body"><main class="qr-card"><div class="logo big">◆</div><h1>{{ person.name }}</h1><p>Kişiye özel güvenli barkod</p><img src="{{ qr }}" class="qr"><div class="secure">Bu QR yalnızca bu personele aittir</div><a href="/dashboard" class="back">Panele dön</a></main></body></html>
