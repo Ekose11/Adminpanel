@@ -10,7 +10,7 @@
 
     <application
         android:theme="@style/AppTheme"
-        android:label="Boztek Personel"
+        android:label="Personel Sistemi"
         android:usesCleartextTraffic="true"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
