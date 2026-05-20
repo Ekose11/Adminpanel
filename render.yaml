@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: boztek-pro
+    name: boztek-server
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
