@@ -1,21 +1,23 @@
-# Bu endpointi server app.py dosyana ekle.
-# Personel kartvizit sekmesi, fotoğraf/telefon/adres bilgilerini bu adresten canlı çeker.
+# app.py dosyanın en altına ekle (PERSONNEL listesi varsa direkt çalışır).
+# Kartvizit ekranı fotoğraf/telefon/adres bilgilerini buradan çeker.
 
 @app.route('/api/personnel-cards')
 def api_personnel_cards():
     token = request.args.get('token', '')
-    # token kontrol fonksiyonun varsa burada kullan:
-    # user = get_employee_by_token(token)
-    # if not user: return jsonify({'status':'error','message':'Yetkisiz'}), 401
+    people = globals().get('PERSONNEL', globals().get('personnel', globals().get('employees', [])))
     cards = []
-    for p in PERSONNEL:
+    if isinstance(people, dict):
+        people = list(people.values())
+    for p in people:
+        if not isinstance(p, dict):
+            continue
         cards.append({
-            'id': p.get('id'),
-            'full_name': p.get('full_name') or p.get('name',''),
-            'department': p.get('department','Personel'),
-            'phone': p.get('phone',''),
-            'address': p.get('address',''),
-            'photo_data': p.get('photo_data',''),
-            'attendance_status': p.get('attendance_status','')
+            'id': p.get('id') or p.get('personel_id') or p.get('employee_id'),
+            'full_name': p.get('full_name') or p.get('name') or p.get('ad_soyad') or p.get('username','Personel'),
+            'department': p.get('department') or p.get('gorev') or p.get('role','Personel'),
+            'phone': p.get('phone') or p.get('telefon',''),
+            'address': p.get('address') or p.get('adres',''),
+            'photo_data': p.get('photo_data') or p.get('photo') or p.get('image') or '',
+            'attendance_status': p.get('attendance_status') or p.get('status','')
         })
     return jsonify({'status':'ok','personnel':cards})

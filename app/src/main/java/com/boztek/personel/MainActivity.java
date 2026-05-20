@@ -554,6 +554,7 @@ public class MainActivity extends Activity {
         Button back = btn("Ana Ekran", RED);
         root.addView(refresh);
         root.addView(back);
+        // Butonlar sabit kalır, kartlar 6. elemandan sonra eklenir.
         refresh.setOnClickListener(v -> loadPersonnelCards(false));
         back.setOnClickListener(v -> { stopPersonnelLive(); showPanel(); loadMe(); });
         loadPersonnelCards(false);
@@ -588,6 +589,8 @@ public class MainActivity extends Activity {
                 }
                 JSONArray arr = o.optJSONArray("personnel");
                 if (arr == null) arr = o.optJSONArray("employees");
+                if (arr == null) arr = o.optJSONArray("data");
+                if (arr == null) arr = o.optJSONArray("items");
                 final JSONArray finalArr = arr;
                 runOnUiThread(() -> renderPersonnelCards(finalArr));
             } catch (Exception e) {
@@ -598,9 +601,15 @@ public class MainActivity extends Activity {
 
     void renderPersonnelCards(JSONArray arr) {
         // Başlık, açıklama, durum, yenile ve geri butonlarını tut; eski kartları kaldır.
-        while (root.getChildCount() > 5) root.removeViewAt(5);
+        while (root.getChildCount() > 6) root.removeViewAt(6);
         if (statusText != null) statusText.setText(arr == null ? "Kayıt bulunamadı" : ("Canlı güncellendi • " + arr.length() + " personel"));
-        if (arr == null || arr.length() == 0) return;
+        if (arr == null || arr.length() == 0) {
+            LinearLayout empty = whiteCard();
+            empty.addView(text("Henüz personel kartı yok", 20, BLUE, Typeface.BOLD));
+            empty.addView(text("Serverdaki /api/personnel-cards endpointi boş dönüyor veya personel listesi eklenmemiş.", 15, MUTED, Typeface.BOLD));
+            root.addView(empty);
+            return;
+        }
         for (int i = 0; i < arr.length(); i++) {
             JSONObject p = arr.optJSONObject(i);
             if (p == null) continue;
