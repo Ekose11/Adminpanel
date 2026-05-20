@@ -1,0 +1,21 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.boztek.personel'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.boztek.personel.qr'
+        minSdk 24
+        targetSdk 35
+        versionCode 20
+        versionName '20.0'
+    }
+}
+
+dependencies {
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'com.google.zxing:core:3.5.3'
+}
