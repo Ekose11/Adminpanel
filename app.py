@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, Response
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 from io import BytesIO
 import os, secrets, pg8000
 from werkzeug.utils import secure_filename
@@ -272,17 +272,48 @@ def _payload_value(*names):
 
 def _parse_qr_payload(raw):
     raw = (raw or "").strip()
-    if raw.startswith("PERSONEL:"):
+    if not raw:
+        return "", ""
+
+    # Bazı QR okuyucular değeri URL encoded gönderiyor: PERSONEL%3A1%3Atoken
+    raw = unquote(raw).strip()
+
+    # Bazı okuyucular QR görselinin URL'sini okutup data=... parametresini gönderebiliyor.
+    # Bu durumda data / qr_data / token alanlarını URL içinden ayıkla.
+    if "?" in raw and ("data=" in raw or "qr_data=" in raw or "barcode=" in raw):
+        try:
+            qs = parse_qs(raw.split("?", 1)[1])
+            for key in ("data", "qr_data", "qr", "barcode", "code"):
+                if qs.get(key):
+                    raw = unquote(qs[key][0]).strip()
+                    break
+        except Exception:
+            pass
+
+    # Yeni ana format: PERSONEL:person_id:token
+    if raw.upper().startswith("PERSONEL:"):
         parts = raw.split(":", 2)
-        if len(parts) == 3:
-            return parts[1], parts[2]
+        if len(parts) == 3 and parts[1] and parts[2]:
+            return parts[1].strip(), parts[2].strip()
+
+    # JSON benzeri metin gelirse basit ayıklama
+    if "person_id" in raw and "token" in raw:
+        import re
+        pid = re.search(r'person_id["\']?\s*[:=]\s*["\']?(\d+)', raw)
+        tok = re.search(r'token["\']?\s*[:=]\s*["\']?([A-Za-z0-9_-]+)', raw)
+        if pid and tok:
+            return pid.group(1), tok.group(1)
+
     # Eski/yedek formatlar: id|token veya id:token
     if "|" in raw:
         parts = raw.split("|", 1)
-        return parts[0], parts[1]
+        if parts[0] and parts[1]:
+            return parts[0].strip(), parts[1].strip()
     if ":" in raw:
         parts = raw.split(":", 1)
-        return parts[0], parts[1]
+        if parts[0] and parts[1]:
+            return parts[0].strip(), parts[1].strip()
+
     return "", raw
 
 @app.route("/api/my-qr", methods=["GET", "POST"])
