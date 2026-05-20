@@ -302,6 +302,33 @@ def employee_notifications():
     if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
     rows=q("select id,event_type,message,created_at,is_read from notifications where person_id=%s order by id desc limit 50",(p["id"],),fetch=True)
     return jsonify({"status":"ok","notifications":rows})
+@app.route("/admin/qr")
+def admin_qr():
+    if not admin():
+        return redirect("/admin/login")
+    rows = q("select * from personnel where active=1 order by full_name", fetch=True)
+    base_url = request.url_root.rstrip("/")
+    return render_template("qr.html", title="QR", rows=rows, base_url=base_url)
 
+@app.route("/qr/entry/<int:person_id>")
+def qr_entry(person_id):
+    p = q("select * from personnel where id=%s and active=1", (person_id,), fetch=True, one=True)
+    if not p:
+        return "Personel bulunamadı", 404
+    t = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'entry',%s)", (person_id,t))
+    return render_template("qr_result.html", title="Giriş Kaydedildi", person=p, time=t, color="green")
+
+@app.route("/qr/exit/<int:person_id>")
+def qr_exit(person_id):
+    p = q("select * from personnel where id=%s and active=1", (person_id,), fetch=True, one=True)
+    if not p:
+        return "Personel bulunamadı", 404
+    t = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'exit',%s)", (person_id,t))
+    return render_template("qr_result.html", title="Çıkış Kaydedildi", person=p, time=t, color="red")
+
+base.html menüsüne de şu satırı ekle:
+<a href="/admin/qr">🔳 QR Giriş / Çıkış</a>
 if __name__=="__main__":
     app.run(host="0.0.0.0",port=int(os.environ.get("PORT",10000)))
