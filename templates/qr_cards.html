@@ -1,23 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="hero premium-hero">
-  <div>
-    <div class="eyebrow">Güvenli QR</div>
-    <div class="title">Kişiye Özel QR Kartları</div>
-    <div class="subtitle">Her QR personelin kendi token’ı ile oluşturulur. Başka personele ait QR kabul edilmez.</div>
-  </div>
-  <img src="{{ url_for('static', filename='img/logo.svg') }}" class="hero-logo" alt="Logo">
-</div>
+<div class="hero"><div class="title">QR Kartları</div><div class="subtitle">Her personel için server tarafından oluşturulan güvenli, kişiye özel QR kod.</div></div>
 <div class="card"><button class="btn btn-green" onclick="window.print()">QR Kartlarını Yazdır</button></div>
 <div class="qr-grid">
 {% for p in rows %}
-  <div class="qr-card premium-qr">
-    <img src="{{ url_for('static', filename='img/logo.svg') }}" class="qr-mini-logo" alt="Logo">
+  <div class="qr-card">
+    <img class="mini-logo" src="{{ url_for('static', filename='img/logo.svg') }}">
     <div class="qr-name">{{p.full_name}}</div>
-    <div class="muted">{{p.department}}</div>
-    {% set qrdata = 'PERSONELQR:' ~ p.id ~ ':' ~ (p.token or '') %}
-    <img class="qr-img" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data={{ qrdata|urlencode }}" alt="QR">
-    <div class="qr-code">Kişiye özel güvenli barkod</div>
+    <div>{{p.department}}</div>
+    <img class="qr-img" src="/admin/qr/{{p.id}}.svg" alt="QR">
+    <div class="qr-code">Kişiye özel güvenli QR</div>
   </div>
 {% endfor %}
 </div>

@@ -1,27 +1,2 @@
-<!doctype html>
-<html lang="tr">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Personel Sistemi Giriş</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-<div class="login-page">
-  <div class="orb orb1"></div><div class="orb orb2"></div>
-  <div class="login-card premium-glass">
-    <img src="{{ url_for('static', filename='img/logo.svg') }}" class="login-logo" alt="Logo">
-    <h1>Personel Sistemi</h1>
-    <p class="login-subtitle">Premium QR yönetim paneli</p>
-    <form method="post">
-      <input name="username" placeholder="Kullanıcı adı" autocomplete="username">
-      <input name="password" type="password" placeholder="Şifre" autocomplete="current-password">
-      <button class="btn premium-btn" style="width:100%">Giriş Yap</button>
-    </form>
-    {% with messages=get_flashed_messages() %}
-      {% for m in messages %}<p class="login-error">{{m}}</p>{% endfor %}
-    {% endwith %}
-  </div>
-</div>
-</body>
-</html>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body>
+<div class="login-page"><div class="login-card"><img class="login-logo" src="{{ url_for('static', filename='img/logo.svg') }}"><h1>Personel Sistemi</h1><p>Premium QR giriş-çıkış yönetimi</p><form method="post"><input name="username" placeholder="Kullanıcı adı"><input name="password" type="password" placeholder="Şifre"><button class="btn" style="width:100%">Giriş Yap</button></form>{% with messages=get_flashed_messages() %}{% for m in messages %}<p style="color:#fecaca">{{m}}</p>{% endfor %}{% endwith %}</div></div></body></html>

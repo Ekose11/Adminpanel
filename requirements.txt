@@ -1,1 +1,5 @@
-3.11.9
+Flask==3.0.3
+gunicorn==22.0.0
+pg8000==1.31.2
+reportlab==4.2.2
+segno==1.6.1
