@@ -59,9 +59,10 @@ def staff_to_dict(r):
 def make_qr_data(staff_id, token):
     return f'PERSONELQR:{staff_id}:{token}'
 
-def qr_png_base64(data):
-    img = qrcode.make(data)
-    buf = io.BytesIO(); img.save(buf, format='PNG')
+def qr_svg_base64(data):
+    qr = segno.make(data, error='m')
+    buf = io.BytesIO()
+    qr.save(buf, kind='svg', scale=8, xmldecl=False)
     return base64.b64encode(buf.getvalue()).decode('utf-8')
 
 LOGIN_HTML = '''<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personel Sistemi</title><style>
@@ -71,6 +72,7 @@ DASH_HTML = '''<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta 
 *{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#07111f;color:#eaf4ff}.top{position:sticky;top:0;padding:18px 26px;background:rgba(5,18,35,.86);backdrop-filter:blur(18px);border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center}.brand{display:flex;gap:12px;align-items:center;font-weight:900;font-size:20px}.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#63c7ff,#084a95);display:grid;place-items:center}.logo:before{content:'👥'}.wrap{padding:26px;max-width:1200px;margin:auto}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.card{border:1px solid rgba(255,255,255,.11);border-radius:24px;padding:20px;background:linear-gradient(145deg,rgba(255,255,255,.1),rgba(255,255,255,.035));box-shadow:0 18px 50px rgba(0,0,0,.28)}.num{font-size:34px;font-weight:900;margin-top:8px}.muted{color:#97b4d4}.panel{margin-top:22px}.staff{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;margin:12px 0;padding:16px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09)}a,button{background:linear-gradient(135deg,#20a4ff,#0756bd);color:white;text-decoration:none;border:0;border-radius:12px;padding:11px 14px;font-weight:800}.danger{background:linear-gradient(135deg,#ff4b5f,#9d1224)}.qr{max-width:220px;border-radius:20px;background:white;padding:10px}.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}.form input{padding:13px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#0c1b2f;color:white}</style></head><body><div class="top"><div class="brand"><div class="logo"></div>Personel Sistemi</div><a class="danger" href="/logout">Çıkış</a></div><div class="wrap"><div class="grid"><div class="card"><div class="muted">Toplam Personel</div><div class="num">{{total}}</div></div><div class="card"><div class="muted">Bugün Giriş</div><div class="num">{{entries}}</div></div><div class="card"><div class="muted">Bugün Çıkış</div><div class="num">{{exits}}</div></div><div class="card"><div class="muted">Aktif Sistem</div><div class="num">QR</div></div></div><div class="card panel"><h2>Personel Ekle</h2><form class="form" method="post" action="/admin/staff/add"><input name="name" placeholder="Ad Soyad"><input name="username" placeholder="Kullanıcı adı"><input name="password" placeholder="Şifre"><input name="salary" placeholder="Maaş"><button>Ekle</button></form></div><div class="card panel"><h2>Personel Listesi</h2>{% for s in staff %}<div class="staff"><div><b>{{s.name}}</b><div class="muted">@{{s.username}} · Maaş: {{s.salary}} · Avans: {{s.advance}} · İzin: {{s.annual_leave}}</div></div><a href="/admin/qr/{{s.id}}">QR Aç</a><a class="danger" href="/admin/staff/delete/{{s.id}}">Sil</a></div>{% endfor %}</div><div class="card panel"><h2>Son Hareketler</h2>{% for l in logs %}<div class="staff"><div><b>{{l.name}}</b><div class="muted">{{l.type}} · {{l.created_at}}</div></div></div>{% endfor %}</div></div></body></html>'''
 
 @app.route('/', methods=['GET','POST'])
+@app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
@@ -86,6 +88,9 @@ def need_admin():
     return session.get('admin') is True
 
 @app.route('/dashboard')
+@app.route('/admin')
+@app.route('/adminpanel')
+@app.route('/web')
 def dashboard():
     if not need_admin(): return redirect('/')
     con = db()
@@ -116,8 +121,8 @@ def admin_qr(sid):
     if not need_admin(): return redirect('/')
     con=db(); s=con.execute('SELECT * FROM staff WHERE id=?',(sid,)).fetchone(); con.close()
     if not s: return 'Personel yok',404
-    data = make_qr_data(s['id'], s['qr_token']); img=qr_png_base64(data)
-    return f'''<body style="margin:0;background:#07111f;color:white;font-family:Arial;display:grid;place-items:center;min-height:100vh"><div style="padding:30px;border-radius:26px;background:rgba(255,255,255,.08);text-align:center"><h1>{s['name']}</h1><p>Kişiye özel güvenli barkod</p><img style="background:white;padding:14px;border-radius:20px;width:280px" src="data:image/png;base64,{img}"><br><br><a style="color:white" href="/dashboard">Panele dön</a></div></body>'''
+    data = make_qr_data(s['id'], s['qr_token']); img=qr_svg_base64(data)
+    return f'''<body style="margin:0;background:#07111f;color:white;font-family:Arial;display:grid;place-items:center;min-height:100vh"><div style="padding:30px;border-radius:26px;background:rgba(255,255,255,.08);text-align:center"><h1>{s['name']}</h1><p>Kişiye özel güvenli barkod</p><img style="background:white;padding:14px;border-radius:20px;width:280px" src="data:image/svg+xml;base64,{img}"><br><br><a style="color:white" href="/dashboard">Panele dön</a></div></body>'''
 
 @app.route('/api/login', methods=['POST'])
 def api_login():
@@ -139,7 +144,7 @@ def api_my_qr():
     con=db(); s=con.execute('SELECT * FROM staff WHERE id=? AND qr_token=?',(staff_id,token)).fetchone(); con.close()
     if not s: return jsonify(ok=False,error='QR yetkisi reddedildi'),403
     data=make_qr_data(s['id'],s['qr_token'])
-    return jsonify(ok=True, qr_data=data, qr_image='data:image/svg+xml;base64,'+qr_png_base64(data))
+    return jsonify(ok=True, qr_data=data, qr_image='data:image/svg+xml;base64,'+qr_svg_base64(data))
 
 @app.route('/api/qr/verify', methods=['POST'])
 def api_qr_verify():
