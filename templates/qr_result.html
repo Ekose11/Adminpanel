@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Boztek QR</title>
+  <style>
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#08111f;color:white;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:22px}
+    .card{max-width:520px;width:100%;background:white;color:#111827;border-radius:30px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center}
+    .ok{font-size:58px;margin-bottom:10px}
+    h1{font-size:32px;margin:10px 0}
+    p{font-size:19px;color:#475569;line-height:1.4}
+    .green{color:#16a34a}.red{color:#dc2626}
+    .btn{display:block;margin-top:18px;background:#2563eb;color:white;text-decoration:none;padding:16px;border-radius:18px;font-weight:900;font-size:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="ok {{ color }}">✓</div>
+    <h1>{{ title }}</h1>
+    <p><b>{{ person.full_name }}</b></p>
+    <p>{{ person.department }}</p>
+    <p>{{ time }}</p>
+    <a class="btn" href="/">Panel Ana Sayfa</a>
+  </div>
+</body>
+</html>

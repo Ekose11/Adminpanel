@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero">
+  <div class="title">QR Giriş / Çıkış</div>
+  <div class="subtitle">APK gerekmez. Telefon kamerası ile okut, Chrome açılır ve kayıt server'a düşer.</div>
+</div>
+
+<div class="card">
+  <h2>Personel QR Linkleri</h2>
+  <p><b>Giriş QR</b> ve <b>Çıkış QR</b> linklerini QR'a çevirip personel kartına veya duvara yazdır.</p>
+  <div class="table-wrap">
+    <table class="table">
+      <tr>
+        <th>Personel</th>
+        <th>Bölüm</th>
+        <th>Giriş QR Linki</th>
+        <th>Çıkış QR Linki</th>
+      </tr>
+      {% for p in rows %}
+      <tr>
+        <td><b>{{ p.full_name }}</b></td>
+        <td>{{ p.department }}</td>
+        <td><a class="btn btn-green" href="{{ base_url }}/qr/entry/{{ p.id }}" target="_blank">Giriş Linki Aç</a><br><small>{{ base_url }}/qr/entry/{{ p.id }}</small></td>
+        <td><a class="btn btn-red" href="{{ base_url }}/qr/exit/{{ p.id }}" target="_blank">Çıkış Linki Aç</a><br><small>{{ base_url }}/qr/exit/{{ p.id }}</small></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+{% endblock %}
