@@ -1,238 +1,176 @@
-from flask import Flask, render_template, request, redirect, session, flash, jsonify
-from datetime import datetime
-from urllib.parse import urlparse, unquote
-import os, secrets, pg8000
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file
+from datetime import datetime, date
+import sqlite3, os, calendar
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
-app=Flask(__name__)
-app.secret_key=os.environ.get("SECRET_KEY","boztek-pro-secret")
-DATABASE_URL=os.environ.get("DATABASE_URL")
-SUPER_USERNAME=os.environ.get("SUPER_USERNAME","saban")
-SUPER_PASSWORD=os.environ.get("SUPER_PASSWORD","5109")
-READY=False
-
-def parse_db_url():
-    if not DATABASE_URL: raise RuntimeError("DATABASE_URL yok")
-    u=urlparse(DATABASE_URL)
-    return {"user":unquote(u.username or ""),"password":unquote(u.password or ""),"host":u.hostname,"port":u.port or 5432,"database":(u.path or "/neondb").lstrip("/")}
+app = Flask(__name__)
+app.secret_key = "boztek-secret-key"
+DB = "boztek.db"
+WORK_START = "09:00"
+WORK_END = "18:00"
 
 def db():
-    c=parse_db_url()
-    return pg8000.connect(user=c["user"],password=c["password"],host=c["host"],port=c["port"],database=c["database"],ssl_context=True,timeout=20)
-
-def rows_to_dicts(cur,rows):
-    if not rows: return []
-    cols=[c["name"] if isinstance(c,dict) else c[0] for c in cur.description]
-    return [dict(zip(cols,r)) for r in rows]
-
-def q(sql,params=None,fetch=False,one=False):
-    conn=db()
-    try:
-        cur=conn.cursor(); cur.execute(sql,params or ())
-        data=None
-        if fetch:
-            data=rows_to_dicts(cur,cur.fetchall())
-            if one: data=data[0] if data else None
-        conn.commit(); cur.close(); return data
-    finally:
-        conn.close()
-
-def col(table,name,definition):
-    r=q("select column_name from information_schema.columns where table_name=%s and column_name=%s",(table,name),fetch=True,one=True)
-    if not r: q(f"alter table {table} add column {definition}")
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def init_db():
-    global READY
-    q("create table if not exists firms(id serial primary key,name text not null,logo_url text,admin_username text unique not null,admin_password text not null,active integer default 1)")
-    q("create table if not exists personnel(id serial primary key,firm_id integer references firms(id) on delete cascade,full_name text not null,department text not null,annual_leave_total integer default 14,annual_leave_used integer default 0,annual_leave_remaining integer default 14,salary numeric default 0,active integer default 1,username text,password text,token text unique)")
-    q("create table if not exists advances(id serial primary key,firm_id integer references firms(id) on delete cascade,person_id integer references personnel(id) on delete cascade,amount numeric not null,note text,status text default 'Beklemede')")
-    q("create table if not exists leaves(id serial primary key,firm_id integer references firms(id) on delete cascade,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,status text default 'İzinli')")
-    q("create table if not exists attendance_logs(id serial primary key,firm_id integer references firms(id) on delete cascade,person_id integer references personnel(id) on delete cascade,event_type text not null,event_time text not null)")
-    col("personnel","firm_id","firm_id integer references firms(id) on delete cascade")
-    col("advances","firm_id","firm_id integer references firms(id) on delete cascade")
-    col("leaves","firm_id","firm_id integer references firms(id) on delete cascade")
-    col("attendance_logs","firm_id","firm_id integer references firms(id) on delete cascade")
-    if not q("select id from firms limit 1",fetch=True,one=True):
-        q("insert into firms(name,logo_url,admin_username,admin_password,active) values(%s,'',%s,%s,1)",("Boztek Demo",SUPER_USERNAME,SUPER_PASSWORD))
-    READY=True
+    conn = db(); c = conn.cursor()
+    c.execute("""CREATE TABLE IF NOT EXISTS personnel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        salary REAL DEFAULT 0,
+        annual_leave_total INTEGER DEFAULT 14,
+        active INTEGER DEFAULT 1
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER,
+        action TEXT,
+        ts TEXT,
+        day TEXT,
+        month TEXT,
+        FOREIGN KEY(person_id) REFERENCES personnel(id)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS leaves (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER,
+        start_day TEXT,
+        end_day TEXT,
+        note TEXT,
+        created_at TEXT,
+        FOREIGN KEY(person_id) REFERENCES personnel(id)
+    )""")
+    c.execute("""CREATE TABLE IF NOT EXISTS advances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER,
+        amount REAL,
+        note TEXT,
+        created_at TEXT,
+        month TEXT,
+        FOREIGN KEY(person_id) REFERENCES personnel(id)
+    )""")
+    if c.execute("SELECT COUNT(*) FROM personnel").fetchone()[0] == 0:
+        c.executemany("INSERT INTO personnel(name,salary) VALUES (?,?)", [("Ahmet Yılmaz",25000),("Mehmet Kaya",25000),("Ayşe Demir",25000)])
+    conn.commit(); conn.close()
 
-@app.before_request
-def before():
-    global READY
-    if not READY: init_db()
+def login_required(fn):
+    def wrapper(*a, **kw):
+        if not session.get('login'):
+            return redirect(url_for('login'))
+        return fn(*a, **kw)
+    wrapper.__name__ = fn.__name__
+    return wrapper
 
-def fid(): return session.get("firm_id")
-def logged(): return fid() is not None
-def firm():
-    return q("select * from firms where id=%s",(fid(),),fetch=True,one=True) if logged() else None
-def fname():
-    f=firm(); return f["name"] if f else "Boztek PRO"
-@app.context_processor
-def inject(): return {"firm_name":fname()}
-def val(n,d=None): return request.form.get(n) or request.args.get(n) or d
-def days_between(a,b):
-    s=datetime.strptime(a,"%Y-%m-%d").date(); e=datetime.strptime(b,"%Y-%m-%d").date()
-    return max((e-s).days+1,1)
+def current_month(): return datetime.now().strftime('%Y-%m')
+def now_str(): return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+def today_str(): return date.today().isoformat()
 
-@app.route("/")
-def home(): return redirect("/admin/dashboard") if logged() else redirect("/admin/login")
+def get_summary(month=None):
+    month = month or current_month()
+    conn = db()
+    people = conn.execute("SELECT * FROM personnel WHERE active=1 ORDER BY name").fetchall()
+    result=[]
+    for p in people:
+        days = conn.execute("SELECT COUNT(DISTINCT day) c FROM attendance WHERE person_id=? AND action='giris' AND month=?", (p['id'],month)).fetchone()['c']
+        late = conn.execute("SELECT COUNT(*) c FROM attendance WHERE person_id=? AND action='giris' AND month=? AND substr(ts,12,5)>?", (p['id'],month,WORK_START)).fetchone()['c']
+        early = conn.execute("SELECT COUNT(*) c FROM attendance WHERE person_id=? AND action='cikis' AND month=? AND substr(ts,12,5)<?", (p['id'],month,WORK_END)).fetchone()['c']
+        adv = conn.execute("SELECT COALESCE(SUM(amount),0) s FROM advances WHERE person_id=? AND month=?", (p['id'],month)).fetchone()['s']
+        last = conn.execute("SELECT action,ts FROM attendance WHERE person_id=? ORDER BY ts DESC LIMIT 1", (p['id'],)).fetchone()
+        result.append(dict(p, came_days=days, late=late, early=early, advance_total=adv, net_salary=(p['salary'] or 0)-adv, last_action=last['action'] if last else '-', last_ts=last['ts'] if last else '-'))
+    conn.close(); return result
 
-@app.route("/admin/login",methods=["GET","POST"])
+@app.route('/login', methods=['GET','POST'])
 def login():
-    if request.method=="POST":
-        f=q("select * from firms where admin_username=%s and admin_password=%s and active=1",(request.form.get("username"),request.form.get("password")),fetch=True,one=True)
-        if f:
-            session["firm_id"]=f["id"]; return redirect("/admin/dashboard")
-        flash("Firma kullanıcı adı veya şifre hatalı")
-    return render_template("login.html")
+    if request.method=='POST':
+        if request.form.get('username')=='admin' and request.form.get('password')=='1234':
+            session['login']=True; return redirect(url_for('dashboard'))
+        return render_template('login.html', error='Hatalı kullanıcı adı veya şifre')
+    return render_template('login.html')
 
-@app.route("/admin/logout")
-def logout(): session.clear(); return redirect("/admin/login")
+@app.route('/logout')
+def logout(): session.clear(); return redirect(url_for('login'))
 
-@app.route("/admin/dashboard")
+@app.route('/')
+@login_required
 def dashboard():
-    if not logged(): return redirect("/admin/login")
-    id=fid()
-    stats=q("select (select count(*) from personnel where firm_id=%s) personel,(select count(*) from leaves where firm_id=%s) izin,(select count(*) from advances where firm_id=%s) avans,(select count(*) from attendance_logs where firm_id=%s) logs",(id,id,id,id),fetch=True,one=True)
-    return render_template("dashboard.html",title="Dashboard",stats=stats)
+    month=request.args.get('month', current_month())
+    return render_template('dashboard.html', people=get_summary(month), month=month)
 
-@app.route("/admin/personnel",methods=["GET","POST"])
+@app.route('/personnel', methods=['GET','POST'])
+@login_required
 def personnel():
-    if not logged(): return redirect("/admin/login")
-    id=fid()
-    if request.method=="POST":
-        total=int(request.form.get("annual_leave_total",14)); salary=float(request.form.get("salary",0))
-        q("insert into personnel(firm_id,full_name,department,annual_leave_total,annual_leave_used,annual_leave_remaining,salary,active,username,password,token) values(%s,%s,%s,%s,0,%s,%s,1,%s,%s,%s)",(id,request.form["full_name"],request.form["department"],total,total,salary,request.form.get("username") or None,request.form.get("password") or None,secrets.token_hex(24)))
-        flash("Personel firmaya eklendi.")
-    rows=q("select * from personnel where firm_id=%s order by id desc",(id,),fetch=True)
-    return render_template("personnel.html",title="Personel",rows=rows)
+    conn=db()
+    if request.method=='POST':
+        conn.execute("INSERT INTO personnel(name,salary,annual_leave_total) VALUES (?,?,?)", (request.form['name'], request.form.get('salary',0), request.form.get('leave',14)))
+        conn.commit(); conn.close(); return redirect(url_for('personnel'))
+    people=conn.execute("SELECT * FROM personnel WHERE active=1 ORDER BY name").fetchall(); conn.close()
+    return render_template('personnel.html', people=people)
 
-@app.route("/admin/personnel/<int:pid>/edit",methods=["GET","POST"])
-def edit_person(pid):
-    if not logged(): return redirect("/admin/login")
-    id=fid(); p=q("select * from personnel where id=%s and firm_id=%s",(pid,id),fetch=True,one=True)
-    if not p: return redirect("/admin/personnel")
-    if request.method=="POST":
-        total=int(request.form.get("annual_leave_total",0)); used=int(request.form.get("annual_leave_used",0)); rem=max(total-used,0); token=p.get("token") or secrets.token_hex(24)
-        q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s where id=%s and firm_id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,pid,id))
-        flash("Personel güncellendi."); return redirect("/admin/personnel")
-    return render_template("edit.html",title="Düzenle",p=p)
+@app.route('/personnel/delete/<int:id>')
+@login_required
+def delete_person(id):
+    conn=db(); conn.execute("UPDATE personnel SET active=0 WHERE id=?", (id,)); conn.commit(); conn.close(); return redirect(url_for('personnel'))
 
-@app.route("/admin/personnel/<int:pid>/delete",methods=["POST"])
-def delete_person(pid):
-    if not logged(): return redirect("/admin/login")
-    q("delete from personnel where id=%s and firm_id=%s",(pid,fid())); flash("Personel silindi."); return redirect("/admin/personnel")
-
-@app.route("/admin/settings",methods=["GET","POST"])
-def settings():
-    if not logged(): return redirect("/admin/login")
-    if request.method=="POST":
-        q("update firms set name=%s,logo_url=%s where id=%s",(request.form.get("name"),request.form.get("logo_url"),fid()))
-        flash("Firma ayarları kaydedildi."); return redirect("/admin/settings")
-    return render_template("settings.html",title="Firma Ayarları",firm=firm())
-
-@app.route("/admin/advances",methods=["GET","POST"])
-def advances():
-    if not logged(): return redirect("/admin/login")
-    id=fid()
-    if request.method=="POST":
-        q("insert into advances(firm_id,person_id,amount,note,status) values(%s,%s,%s,'','Beklemede')",(id,request.form["person_id"],request.form["amount"])); flash("Avans kaydedildi.")
-    people=q("select * from personnel where firm_id=%s order by full_name",(id,),fetch=True)
-    rows=q("select a.*,p.full_name from advances a join personnel p on p.id=a.person_id where a.firm_id=%s order by a.id desc",(id,),fetch=True)
-    opts="".join([f"<option value='{p['id']}'>{p['full_name']}</option>" for p in people])
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{float(r['amount']):.2f} ₺</td><td><span class='badge orange'>{r['status']}</span></td></tr>" for r in rows])
-    body=f"<div class='card'><form method='post' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Tutar</label><input name='amount' type='number' step='0.01' required></div><div><button class='btn btn-orange'>Avans Ekle</button></div></form></div><div class='card'><table class='table'><tr><th>Personel</th><th>Tutar</th><th>Durum</th></tr>{trs}</table></div>"
-    return render_template("table.html",title="Avanslar",subtitle="Sadece bu firmanın kayıtları.",body=body)
-
-@app.route("/admin/leaves",methods=["GET","POST"])
+@app.route('/leaves', methods=['GET','POST'])
+@login_required
 def leaves():
-    if not logged(): return redirect("/admin/login")
-    id=fid()
-    if request.method=="POST":
-        pid=request.form["person_id"]; start=request.form["start_date"]; end=request.form["end_date"]; count=days_between(start,end)
-        p=q("select * from personnel where id=%s and firm_id=%s",(pid,id),fetch=True,one=True)
-        if p and p["annual_leave_remaining"]>=count:
-            q("insert into leaves(firm_id,person_id,start_date,end_date,days_count,status) values(%s,%s,%s,%s,%s,'İzinli')",(id,pid,start,end,count))
-            q("update personnel set annual_leave_used=annual_leave_used+%s,annual_leave_remaining=annual_leave_remaining-%s where id=%s and firm_id=%s",(count,count,pid,id))
-            flash("İzin kaydedildi.")
-        else: flash("Yetersiz izin.")
-    people=q("select * from personnel where firm_id=%s order by full_name",(id,),fetch=True)
-    rows=q("select l.*,p.full_name from leaves l join personnel p on p.id=l.person_id where l.firm_id=%s order by l.id desc",(id,),fetch=True)
-    opts="".join([f"<option value='{p['id']}'>{p['full_name']} - Kalan {p['annual_leave_remaining']}</option>" for p in people])
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{r['start_date']} - {r['end_date']}</td><td>{r['days_count']}</td><td>{r['status']}</td></tr>" for r in rows])
-    body=f"<div class='card'><form method='post' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Başlangıç</label><input name='start_date' type='date' required></div><div class='field'><label>Bitiş</label><input name='end_date' type='date' required></div><div><button class='btn btn-green'>İzin Ekle</button></div></form></div><div class='card'><table class='table'><tr><th>Personel</th><th>Tarih</th><th>Gün</th><th>Durum</th></tr>{trs}</table></div>"
-    return render_template("table.html",title="İzinler",subtitle="Sadece bu firmanın kayıtları.",body=body)
+    conn=db()
+    if request.method=='POST':
+        conn.execute("INSERT INTO leaves(person_id,start_day,end_day,note,created_at) VALUES (?,?,?,?,?)", (request.form['person_id'], request.form['start_day'], request.form['end_day'], request.form.get('note',''), now_str()))
+        conn.commit(); return redirect(url_for('leaves'))
+    people=conn.execute("SELECT * FROM personnel WHERE active=1 ORDER BY name").fetchall()
+    rows=conn.execute("SELECT l.*,p.name FROM leaves l JOIN personnel p ON p.id=l.person_id ORDER BY l.start_day DESC").fetchall(); conn.close()
+    return render_template('leaves.html', people=people, rows=rows)
 
-@app.route("/admin/salary")
-def salary():
-    if not logged(): return redirect("/admin/login")
-    id=fid()
-    rows=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id and a.firm_id=%s where p.firm_id=%s group by p.id order by p.full_name",(id,id),fetch=True)
-    trs=""
+@app.route('/advances', methods=['GET','POST'])
+@login_required
+def advances():
+    conn=db()
+    if request.method=='POST':
+        m=request.form.get('month') or current_month()
+        conn.execute("INSERT INTO advances(person_id,amount,note,created_at,month) VALUES (?,?,?,?,?)", (request.form['person_id'], request.form['amount'], request.form.get('note',''), now_str(), m))
+        conn.commit(); return redirect(url_for('advances'))
+    people=conn.execute("SELECT * FROM personnel WHERE active=1 ORDER BY name").fetchall()
+    rows=conn.execute("SELECT a.*,p.name FROM advances a JOIN personnel p ON p.id=a.person_id ORDER BY a.created_at DESC").fetchall(); conn.close()
+    return render_template('advances.html', people=people, rows=rows, month=current_month())
+
+@app.route('/reports')
+@login_required
+def reports():
+    month=request.args.get('month', current_month())
+    return render_template('reports.html', people=get_summary(month), month=month)
+
+@app.route('/reports/pdf')
+@login_required
+def report_pdf():
+    month=request.args.get('month', current_month())
+    rows=get_summary(month)
+    buf=BytesIO(); doc=SimpleDocTemplate(buf, pagesize=A4)
+    styles=getSampleStyleSheet(); story=[]
+    story.append(Paragraph('BOZTEK AYLIK PERSONEL RAPORU', styles['Title']))
+    story.append(Paragraph(f'Ay: {month}', styles['Normal'])); story.append(Spacer(1,12))
+    data=[['Personel','Geldiği Gün','Geç Giriş','Erken Çıkış','Avans','Net Maaş','Son Durum']]
     for r in rows:
-        s=float(r["salary"] or 0); a=float(r["total_advance"] or 0)
-        trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} ₺</td><td>{a:.2f} ₺</td><td><b>{s-a:.2f} ₺</b></td></tr>"
-    return render_template("table.html",title="Maaşlar",subtitle="Firmaya özel maaş özeti.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th></tr>{trs}</table></div>")
+        data.append([r['name'], str(r['came_days']), str(r['late']), str(r['early']), f"{r['advance_total']:.2f}", f"{r['net_salary']:.2f}", r['last_action']])
+    table=Table(data, repeatRows=1)
+    table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#0f3b70')),('TEXTCOLOR',(0,0),(-1,0),colors.white),('GRID',(0,0),(-1,-1),0.5,colors.grey),('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('ALIGN',(1,1),(-1,-1),'CENTER')]))
+    story.append(table); doc.build(story); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name=f'Boztek_Aylik_Rapor_{month}.pdf', mimetype='application/pdf')
 
-@app.route("/admin/attendance")
-def attendance():
-    if not logged(): return redirect("/admin/login")
-    rows=q("select a.*,p.full_name from attendance_logs a join personnel p on p.id=a.person_id where a.firm_id=%s order by a.id desc limit 300",(fid(),),fetch=True)
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{'Giriş' if r['event_type']=='entry' else 'Çıkış'}</td><td>{r['event_time']}</td></tr>" for r in rows])
-    return render_template("table.html",title="Giriş / Çıkış",subtitle="Firmaya özel kayıtlar.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Tip</th><th>Zaman</th></tr>{trs}</table></div>")
+@app.route('/api/personnel')
+def api_personnel(): return jsonify(get_summary(current_month()))
 
-@app.route("/admin/annual-leave")
-def annual():
-    if not logged(): return redirect("/admin/login")
-    rows=q("select * from personnel where firm_id=%s order by full_name",(fid(),),fetch=True)
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{r['annual_leave_total']}</td><td>{r['annual_leave_used']}</td><td>{r['annual_leave_remaining']}</td></tr>" for r in rows])
-    return render_template("table.html",title="Yıllık İzin",subtitle="Firma personellerinin yıllık izin hakları.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Toplam</th><th>Kullanılan</th><th>Kalan</th></tr>{trs}</table></div>")
+@app.route('/api/attendance', methods=['POST'])
+def api_attendance():
+    data=request.get_json(force=True); pid=data.get('person_id'); action=data.get('action')
+    if action not in ['giris','cikis']: return jsonify({'ok':False,'error':'action giris veya cikis olmali'}),400
+    conn=db(); ts=now_str(); conn.execute("INSERT INTO attendance(person_id,action,ts,day,month) VALUES (?,?,?,?,?)", (pid,action,ts,today_str(),current_month()))
+    conn.commit(); conn.close(); return jsonify({'ok':True,'ts':ts})
 
-@app.route("/admin/reports")
-def reports(): return salary()
-
-@app.route("/api/health")
-def health():
-    q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"multi-firm-pro"})
-
-@app.route("/api/firm-create",methods=["GET","POST"])
-def firm_create():
-    if val("master")!=SUPER_PASSWORD: return jsonify({"status":"error","message":"yetkisiz"}),403
-    name=val("name"); username=val("username"); password=val("password")
-    if not name or not username or not password: return jsonify({"status":"error","message":"eksik alan"}),400
-    q("insert into firms(name,logo_url,admin_username,admin_password,active) values(%s,'',%s,%s,1)",(name,username,password))
-    return jsonify({"status":"ok","firm":name,"username":username})
-
-@app.route("/api/personnel")
-def api_personnel():
-    id=val("firm_id")
-    if not id:
-        first=q("select id from firms order by id limit 1",fetch=True,one=True); id=first["id"] if first else 0
-    return jsonify(q("select * from personnel where firm_id=%s and active=1 order by full_name",(id,),fetch=True))
-
-@app.route("/api/entry",methods=["GET","POST"])
-def api_entry():
-    pid=val("person_id"); p=q("select * from personnel where id=%s",(pid,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"personel yok"}),404
-    t=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    q("insert into attendance_logs(firm_id,person_id,event_type,event_time) values(%s,%s,'entry',%s)",(p["firm_id"],pid,t))
-    return jsonify({"status":"ok","firm_id":p["firm_id"],"person_id":int(pid),"event_type":"entry","event_time":t})
-
-@app.route("/api/exit",methods=["GET","POST"])
-def api_exit():
-    pid=val("person_id"); p=q("select * from personnel where id=%s",(pid,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"personel yok"}),404
-    t=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    q("insert into attendance_logs(firm_id,person_id,event_type,event_time) values(%s,%s,'exit',%s)",(p["firm_id"],pid,t))
-    return jsonify({"status":"ok","firm_id":p["firm_id"],"person_id":int(pid),"event_type":"exit","event_time":t})
-
-@app.route("/api/employee-login",methods=["GET","POST"])
-def employee_login():
-    u=val("username"); pw=val("password")
-    p=q("select * from personnel where username=%s and password=%s and active=1",(u,pw),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"hatalı giriş"}),401
-    token=p.get("token") or secrets.token_hex(24)
-    q("update personnel set token=%s where id=%s",(token,p["id"]))
-    return jsonify({"status":"ok","token":token,"person":p})
-
-if __name__=="__main__":
-    app.run(host="0.0.0.0",port=int(os.environ.get("PORT",10000)))
+if __name__=='__main__':
+    init_db(); app.run(host='0.0.0.0', port=5000, debug=True)
