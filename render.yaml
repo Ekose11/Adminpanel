@@ -1,7 +1,23 @@
-services:
-  - type: web
-    name: boztek-server
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --workers 1 --threads 4 --timeout 120 app:app
+{% extends "base.html" %}
+{% block content %}
+<div class="hero premium-hero">
+  <div>
+    <div class="eyebrow">Güvenli QR</div>
+    <div class="title">Kişiye Özel QR Kartları</div>
+    <div class="subtitle">Her QR personelin kendi token’ı ile oluşturulur. Başka personele ait QR kabul edilmez.</div>
+  </div>
+  <img src="{{ url_for('static', filename='img/logo.svg') }}" class="hero-logo" alt="Logo">
+</div>
+<div class="card"><button class="btn btn-green" onclick="window.print()">QR Kartlarını Yazdır</button></div>
+<div class="qr-grid">
+{% for p in rows %}
+  <div class="qr-card premium-qr">
+    <img src="{{ url_for('static', filename='img/logo.svg') }}" class="qr-mini-logo" alt="Logo">
+    <div class="qr-name">{{p.full_name}}</div>
+    <div class="muted">{{p.department}}</div>
+    <img class="qr-img" src="/admin/qr-image/{{p.id}}" alt="QR">
+    <div class="qr-code">Kişiye özel güvenli barkod</div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}
