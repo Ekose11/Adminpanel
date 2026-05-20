@@ -3,19 +3,22 @@ from datetime import datetime, date
 from urllib.parse import urlparse, unquote
 from io import BytesIO
 import os, secrets, pg8000
+from werkzeug.utils import secure_filename
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "boztek-secret")
+app.secret_key = os.environ.get("SECRET_KEY", "personel-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "eren")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "1234")
 READY = False
 ENTRY_LIMIT = "09:00:00"
 EXIT_LIMIT = "18:00:00"
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def parse_db_url():
     if not DATABASE_URL:
@@ -52,6 +55,13 @@ def init_db():
     q("create table if not exists attendance_logs(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,note text,status text default 'Beklemede',created_at text not null)")
     q("create table if not exists notifications(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,message text not null,created_at text not null,is_read integer default 0)")
+    for sql in [
+        "alter table personnel add column phone text",
+        "alter table personnel add column address text",
+        "alter table personnel add column photo_url text"
+    ]:
+        try: q(sql)
+        except Exception: pass
     try: q("alter table notifications add column person_id integer references personnel(id) on delete cascade")
     except Exception: pass
     READY=True
@@ -81,7 +91,7 @@ def person_summary(pid):
     p=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id where p.id=%s group by p.id",(pid,),fetch=True,one=True)
     if not p: return None
     s=float(p["salary"] or 0); a=float(p["total_advance"] or 0)
-    return {"id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":s,"total_advance":a,"remaining_salary":s-a,"annual_leave_total":p["annual_leave_total"],"annual_leave_used":p["annual_leave_used"],"annual_leave_remaining":p["annual_leave_remaining"]}
+    return {"id":p["id"],"full_name":p["full_name"],"department":p["department"],"phone":p.get("phone") or "","address":p.get("address") or "","photo_url":p.get("photo_url") or "","salary":s,"total_advance":a,"remaining_salary":s-a,"annual_leave_total":p["annual_leave_total"],"annual_leave_used":p["annual_leave_used"],"annual_leave_remaining":p["annual_leave_remaining"]}
 
 def today_status_rows():
     today=date.today().isoformat()
@@ -124,12 +134,6 @@ def dashboard():
 def qr_cards():
     if not admin(): return redirect("/admin/login")
     rows=q("select * from personnel where active=1 order by full_name",fetch=True)
-    for r in rows:
-        if not r.get("token"):
-            token = secrets.token_hex(24)
-            q("update personnel set token=%s where id=%s", (token, r["id"]))
-            r["token"] = token
-        r["qr_data"] = f"PERSONEL:{r['id']}:{r['token']}"
     return render_template("qr_cards.html", title="QR Kartları", rows=rows)
 
 @app.route("/admin/personnel",methods=["GET","POST"])
@@ -142,6 +146,19 @@ def personnel():
             flash("Personel eklendi.")
         except Exception: flash("Personel eklenemedi. Kullanıcı adı aynı olabilir.")
     return render_template("personnel.html",title="Personel",rows=q("select * from personnel order by id desc",fetch=True))
+
+@app.route("/admin/personnel-cards")
+def personnel_cards():
+    if not admin(): return redirect("/admin/login")
+    rows=q("select id,full_name,department,phone,address,photo_url,active from personnel order by full_name",fetch=True)
+    return render_template("personnel_cards.html", title="Personel Kartvizitleri", rows=rows)
+
+@app.route("/api/personnel-cards-json")
+def personnel_cards_json():
+    if not admin(): return jsonify({"status":"error","message":"yetkisiz"}),401
+    rows=q("select id,full_name,department,phone,address,photo_url,active from personnel order by full_name",fetch=True)
+    return jsonify({"status":"ok","personnel":rows,"server_time":now_str()})
+
 @app.route("/admin/personnel/<int:pid>/edit",methods=["GET","POST"])
 def edit_person(pid):
     if not admin(): return redirect("/admin/login")
@@ -149,7 +166,7 @@ def edit_person(pid):
     if not p: return redirect("/admin/personnel")
     if request.method=="POST":
         total=int(request.form.get("annual_leave_total",0)); used=int(request.form.get("annual_leave_used",0)); rem=max(total-used,0); token=p.get("token") or secrets.token_hex(24)
-        q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s where id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,pid))
+        q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s,phone=%s,address=%s,photo_url=%s where id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,request.form.get("phone") or "",request.form.get("address") or "",request.form.get("photo_url") or "",pid))
         flash("Personel güncellendi."); return redirect("/admin/personnel")
     return render_template("edit.html",title="Düzenle",p=p)
 @app.route("/admin/personnel/<int:pid>/delete",methods=["POST"])
@@ -227,68 +244,21 @@ def reports():
 def reports_pdf():
     if not admin(): return redirect("/admin/login")
     rows=report_rows(); buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=24,leftMargin=24,topMargin=24,bottomMargin=24)
-    styles=getSampleStyleSheet(); story=[Paragraph("BOZTEK",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now().strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
+    styles=getSampleStyleSheet(); story=[Paragraph("Personel Sistemi",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now().strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
     data=[["Personel","Bolum","Calisma","Gec","Erken","Avans TL","Kalan Maas TL"]]
     for r in rows:
         s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); data.append([str(r["full_name"]),str(r["department"]),str(r["monthly_days"]),str(r["late_entries"]),str(r["early_exits"]),f"{a:.2f}",f"{s-a:.2f}"])
     table=Table(data,repeatRows=1); table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#1e293b")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.5,colors.grey),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#eef2f7")])]))
     story.append(table); doc.build(story); pdf=buf.getvalue(); buf.close()
-    return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=boztek_aylik_rapor.pdf"})
+    return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=personel_aylik_rapor.pdf"})
 
 @app.route("/api/health")
 def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"qr-entry"})
-@app.route("/api/server-time")
-def api_server_time():
-    return jsonify({"status":"ok","server_time":now_str(),"timezone":"Europe/Istanbul"})
-
-@app.route("/api/my-qr", methods=["GET","POST"])
-def api_my_qr():
-    token=val("token")
-    p=q("select id,full_name,department,token from personnel where token=%s and active=1",(token,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
-    if not p.get("token"):
-        nt=secrets.token_hex(24); q("update personnel set token=%s where id=%s",(nt,p["id"])); p["token"]=nt
-    return jsonify({"status":"ok","qr_data":f"PERSONEL:{p['id']}:{p['token']}","person_id":p["id"],"full_name":p["full_name"]})
-
-@app.route("/api/qr/verify", methods=["GET","POST"])
-def api_qr_verify():
-    qr=val("qr") or val("qr_code") or val("data") or val("code")
-    if not qr:
-        return jsonify({"status":"error","message":"QR kod eksik veya bozuk"}),400
-    qr=unquote(str(qr)).strip()
-    pid=None; token=None
-    try:
-        if qr.startswith("PERSONEL:"):
-            parts=qr.split(":")
-            if len(parts) >= 3:
-                pid=int(parts[1]); token=parts[2]
-        elif qr.startswith("BOZTEK:"):
-            parts=qr.split(":")
-            if len(parts) >= 2:
-                pid=int(parts[1])
-        elif qr.isdigit():
-            pid=int(qr)
-    except Exception:
-        return jsonify({"status":"error","message":"QR kod eksik veya bozuk"}),400
-    if not pid:
-        return jsonify({"status":"error","message":"QR kod eksik veya bozuk"}),400
-    if token:
-        p=q("select id,full_name,token from personnel where id=%s and token=%s and active=1",(pid,token),fetch=True,one=True)
-    else:
-        p=q("select id,full_name,token from personnel where id=%s and active=1",(pid,),fetch=True,one=True)
-    if not p:
-        return jsonify({"status":"error","message":"QR bu personele ait değil veya personel pasif"}),403
-    today=date.today().isoformat()
-    last=q("select event_type from attendance_logs where person_id=%s and substring(event_time,1,10)=%s order by id desc limit 1",(pid,today),fetch=True,one=True)
-    event_type="exit" if last and last.get("event_type")=="entry" else "entry"
-    t=now_str()
-    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,%s,%s)",(pid,event_type,t))
-    return jsonify({"status":"ok","message":"QR doğrulandı","person_id":pid,"full_name":p["full_name"],"event_type":event_type,"event_time":t,"warning":warning_for(event_type,t)})
 @app.route("/api/personnel")
 def api_personnel():
     m=datetime.now().strftime("%Y-%m")
-    rows=q("select p.id,p.full_name,p.department,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days from personnel p left join advances a on a.person_id=p.id where p.active=1 group by p.id order by p.full_name",(m,),fetch=True)
-    return jsonify([{"id":r["id"],"full_name":r["full_name"],"department":r["department"],"monthly_days":r["monthly_days"],"annual_leave_remaining":r["annual_leave_remaining"],"salary":float(r["salary"] or 0),"total_advance":float(r["total_advance"] or 0)} for r in rows])
+    rows=q("select p.id,p.full_name,p.department,p.phone,p.address,p.photo_url,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days from personnel p left join advances a on a.person_id=p.id where p.active=1 group by p.id order by p.full_name",(m,),fetch=True)
+    return jsonify([{"id":r["id"],"full_name":r["full_name"],"department":r["department"],"phone":r.get("phone") or "","address":r.get("address") or "","photo_url":r.get("photo_url") or "","monthly_days":r["monthly_days"],"annual_leave_remaining":r["annual_leave_remaining"],"salary":float(r["salary"] or 0),"total_advance":float(r["total_advance"] or 0)} for r in rows])
 @app.route("/api/entry",methods=["GET","POST"])
 def api_entry():
     pid=val("person_id"); t=now_str()
@@ -349,6 +319,26 @@ def employee_leave_request():
     q("insert into leave_requests(person_id,start_date,end_date,days_count,note,status,created_at) values(%s,%s,%s,%s,%s,'Beklemede',%s)",(p["id"],start,end,count,note,now_str()))
     notify("Yeni izin talebi",f"{p['full_name']} {count} günlük izin talebi gönderdi.",p["id"])
     return jsonify({"status":"ok","message":"İzin talebi gönderildi","days_count":count})
+
+@app.route("/api/profile/update",methods=["POST"])
+def api_profile_update():
+    token=val("token")
+    p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
+    if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
+    phone=val("phone","")
+    address=val("address","")
+    photo_url=val("photo_url","")
+    f=request.files.get("photo")
+    if f and f.filename:
+        ext=os.path.splitext(f.filename)[1].lower()
+        if ext not in [".jpg",".jpeg",".png",".webp"]: ext=".jpg"
+        filename=secure_filename(f"person_{p['id']}_{int(datetime.now().timestamp())}{ext}")
+        path=os.path.join(UPLOAD_FOLDER, filename)
+        f.save(path)
+        photo_url="/static/uploads/"+filename
+    q("update personnel set phone=%s,address=%s,photo_url=%s where id=%s",(phone,address,photo_url,p["id"]))
+    return jsonify({"status":"ok","message":"Profil güncellendi","person":person_summary(p["id"])})
+
 @app.route("/api/employee-notifications",methods=["GET","POST"])
 def employee_notifications():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
