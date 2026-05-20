@@ -52,11 +52,8 @@ def init_db():
     q("create table if not exists attendance_logs(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,note text,status text default 'Beklemede',created_at text not null)")
     q("create table if not exists notifications(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,message text not null,created_at text not null,is_read integer default 0)")
-    # Eski tabloda person_id yoksa ekle
-    try:
-        q("alter table notifications add column person_id integer references personnel(id) on delete cascade")
-    except Exception:
-        pass
+    try: q("alter table notifications add column person_id integer references personnel(id) on delete cascade")
+    except Exception: pass
     READY=True
 
 @app.before_request
@@ -67,18 +64,13 @@ def before():
 def admin(): return session.get("admin_ok") is True
 def val(n,d=None): return request.form.get(n) or request.args.get(n) or d
 def now_str(): return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-def notify(event_type, message, person_id=None):
-    q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id,event_type,message,now_str()))
-
+def notify(event_type, message, person_id=None): q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id,event_type,message,now_str()))
 def days_between(a,b):
     s=datetime.strptime(a,"%Y-%m-%d").date(); e=datetime.strptime(b,"%Y-%m-%d").date()
     return max((e-s).days+1,1)
-
 def time_part(ts):
     try: return ts.split(" ")[1]
     except Exception: return ""
-
 def warning_for(event_type,event_time):
     t=time_part(event_time)
     if event_type=="entry" and t>ENTRY_LIMIT: return "Geç giriş"
@@ -110,7 +102,6 @@ def report_rows():
 
 @app.route("/")
 def home(): return redirect("/admin/dashboard") if admin() else redirect("/admin/login")
-
 @app.route("/admin/login",methods=["GET","POST"])
 def login():
     if request.method=="POST":
@@ -118,20 +109,22 @@ def login():
             session["admin_ok"]=True; return redirect("/admin/dashboard")
         flash("Hatalı kullanıcı adı veya şifre")
     return render_template("login.html")
-
 @app.route("/admin/logout")
 def logout(): session.clear(); return redirect("/admin/login")
-
 @app.route("/admin/dashboard")
 @app.route("/admin")
 def dashboard():
     if not admin(): return redirect("/admin/login")
     ts=today_status_rows()
     stats=q("select (select count(*) from personnel) personel,(select count(*) from advances) avans,(select count(*) from leaves) izin",fetch=True,one=True)
-    stats["inside"]=sum(1 for r in ts if r["status"]=="işte")
-    stats["late"]=sum(1 for r in ts if r["warning"]=="Geç giriş")
-    stats["early"]=sum(1 for r in ts if r["warning"]=="Erken çıkış")
+    stats["inside"]=sum(1 for r in ts if r["status"]=="işte"); stats["late"]=sum(1 for r in ts if r["warning"]=="Geç giriş"); stats["early"]=sum(1 for r in ts if r["warning"]=="Erken çıkış")
     return render_template("dashboard.html",title="Dashboard",stats=stats,today_status=ts)
+
+@app.route("/admin/qr-cards")
+def qr_cards():
+    if not admin(): return redirect("/admin/login")
+    rows=q("select * from personnel where active=1 order by full_name",fetch=True)
+    return render_template("qr_cards.html", title="QR Kartları", rows=rows)
 
 @app.route("/admin/personnel",methods=["GET","POST"])
 def personnel():
@@ -143,7 +136,6 @@ def personnel():
             flash("Personel eklendi.")
         except Exception: flash("Personel eklenemedi. Kullanıcı adı aynı olabilir.")
     return render_template("personnel.html",title="Personel",rows=q("select * from personnel order by id desc",fetch=True))
-
 @app.route("/admin/personnel/<int:pid>/edit",methods=["GET","POST"])
 def edit_person(pid):
     if not admin(): return redirect("/admin/login")
@@ -154,7 +146,6 @@ def edit_person(pid):
         q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s where id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,pid))
         flash("Personel güncellendi."); return redirect("/admin/personnel")
     return render_template("edit.html",title="Düzenle",p=p)
-
 @app.route("/admin/personnel/<int:pid>/delete",methods=["POST"])
 def delete_person(pid):
     if not admin(): return redirect("/admin/login")
@@ -164,14 +155,10 @@ def delete_person(pid):
 def advances():
     if not admin(): return redirect("/admin/login")
     if request.method=="POST":
-        pid=int(request.form["person_id"]); amount=float(request.form["amount"])
-        q("insert into advances(person_id,amount,note,status) values(%s,%s,'','Beklemede')",(pid,amount))
-        p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
-        notify("Yeni avans", f"{p['full_name']} için {amount:.2f} TL avans girildi.", pid)
-        flash("Avans kaydedildi ve sadece ilgili personele bildirim gönderildi.")
+        pid=int(request.form["person_id"]); amount=float(request.form["amount"]); q("insert into advances(person_id,amount,note,status) values(%s,%s,'','Beklemede')",(pid,amount))
+        p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True); notify("Yeni avans",f"{p['full_name']} için {amount:.2f} TL avans girildi.",pid); flash("Avans kaydedildi.")
     people=q("select * from personnel order by full_name",fetch=True); rows=q("select a.*,p.full_name from advances a join personnel p on p.id=a.person_id order by a.id desc limit 300",fetch=True)
-    opts="".join([f"<option value='{p['id']}'>{p['full_name']}</option>" for p in people])
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{float(r['amount']):.2f} TL</td><td>{r['status']}</td></tr>" for r in rows])
+    opts="".join([f"<option value='{p['id']}'>{p['full_name']}</option>" for p in people]); trs="".join([f"<tr><td>{r['full_name']}</td><td>{float(r['amount']):.2f} TL</td><td>{r['status']}</td></tr>" for r in rows])
     return render_template("table.html",title="Avanslar",subtitle="Avans bildirimi sadece ilgili personelde görünür.",body=f"<div class='card'><form method='post' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Tutar</label><input name='amount' type='number' step='0.01' required></div><button class='btn btn-orange'>Avans Ekle</button></form></div><div class='card'><table class='table'><tr><th>Personel</th><th>Tutar</th><th>Durum</th></tr>{trs}</table></div>")
 
 @app.route("/admin/leaves",methods=["GET","POST"])
@@ -181,13 +168,10 @@ def leaves():
         pid=int(request.form["person_id"]); start=request.form["start_date"]; end=request.form["end_date"]; count=days_between(start,end)
         p=q("select * from personnel where id=%s",(pid,),fetch=True,one=True)
         if p and p["annual_leave_remaining"]>=count:
-            q("insert into leaves(person_id,start_date,end_date,days_count,status) values(%s,%s,%s,%s,'İzinli')",(pid,start,end,count))
-            q("update personnel set annual_leave_used=annual_leave_used+%s,annual_leave_remaining=annual_leave_remaining-%s where id=%s",(count,count,pid))
-            notify("İzin onaylandı",f"{count} günlük iznin işlendi.",pid); flash("İzin kaydedildi.")
+            q("insert into leaves(person_id,start_date,end_date,days_count,status) values(%s,%s,%s,%s,'İzinli')",(pid,start,end,count)); q("update personnel set annual_leave_used=annual_leave_used+%s,annual_leave_remaining=annual_leave_remaining-%s where id=%s",(count,count,pid)); notify("İzin onaylandı",f"{count} günlük iznin işlendi.",pid); flash("İzin kaydedildi.")
         else: flash("Yetersiz izin.")
     people=q("select * from personnel order by full_name",fetch=True); rows=q("select l.*,p.full_name from leaves l join personnel p on p.id=l.person_id order by l.id desc limit 300",fetch=True)
-    opts="".join([f"<option value='{p['id']}'>{p['full_name']} - Kalan {p['annual_leave_remaining']} gün</option>" for p in people])
-    trs="".join([f"<tr><td>{r['full_name']}</td><td>{r['start_date']} - {r['end_date']}</td><td>{r['days_count']}</td><td>{r['status']}</td></tr>" for r in rows])
+    opts="".join([f"<option value='{p['id']}'>{p['full_name']} - Kalan {p['annual_leave_remaining']} gün</option>" for p in people]); trs="".join([f"<tr><td>{r['full_name']}</td><td>{r['start_date']} - {r['end_date']}</td><td>{r['days_count']}</td><td>{r['status']}</td></tr>" for r in rows])
     return render_template("table.html",title="İzinler",subtitle="İzin onayı sadece ilgili personele bildirim gönderir.",body=f"<div class='card'><form method='post' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Başlangıç</label><input name='start_date' type='date' required></div><div class='field'><label>Bitiş</label><input name='end_date' type='date' required></div><button class='btn btn-green'>İzin Ekle</button></form></div><div class='card'><table class='table'><tr><th>Personel</th><th>Tarih</th><th>Gün</th><th>Durum</th></tr>{trs}</table></div>")
 
 @app.route("/admin/leave-requests")
@@ -196,7 +180,6 @@ def leave_requests_page():
     rows=q("select lr.*,p.full_name from leave_requests lr join personnel p on p.id=lr.person_id order by lr.id desc limit 300",fetch=True)
     trs="".join([f"<tr><td>{r['full_name']}</td><td>{r['start_date']} - {r['end_date']}</td><td>{r['days_count']}</td><td>{r['note'] or '-'}</td><td>{r['status']}</td><td><a class='btn btn-green' href='/admin/leave-requests/{r['id']}/approve'>Onayla</a></td></tr>" for r in rows])
     return render_template("table.html",title="İzin Talepleri",subtitle="Personel uygulamasından gelen talepler.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Tarih</th><th>Gün</th><th>Not</th><th>Durum</th><th>İşlem</th></tr>{trs}</table></div>")
-
 @app.route("/admin/leave-requests/<int:rid>/approve")
 def approve_leave_request(rid):
     if not admin(): return redirect("/admin/login")
@@ -206,33 +189,27 @@ def approve_leave_request(rid):
     if req["annual_leave_remaining"]<req["days_count"]: flash("Yetersiz izin."); return redirect("/admin/leave-requests")
     q("insert into leaves(person_id,start_date,end_date,days_count,status) values(%s,%s,%s,%s,'İzinli')",(req["person_id"],req["start_date"],req["end_date"],req["days_count"]))
     q("update personnel set annual_leave_used=annual_leave_used+%s,annual_leave_remaining=annual_leave_remaining-%s where id=%s",(req["days_count"],req["days_count"],req["person_id"]))
-    q("update leave_requests set status='Onaylandı' where id=%s",(rid,))
-    notify("İzin onaylandı",f"{req['days_count']} günlük izin talebin onaylandı.",req["person_id"])
-    flash("İzin onaylandı."); return redirect("/admin/leave-requests")
+    q("update leave_requests set status='Onaylandı' where id=%s",(rid,)); notify("İzin onaylandı",f"{req['days_count']} günlük izin talebin onaylandı.",req["person_id"]); flash("İzin onaylandı."); return redirect("/admin/leave-requests")
 
 @app.route("/admin/salary")
 def salary():
     if not admin(): return redirect("/admin/login")
-    rows=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id group by p.id order by full_name",fetch=True)
-    trs=""
+    rows=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id group by p.id order by full_name",fetch=True); trs=""
     for r in rows:
         s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} TL</td><td>{a:.2f} TL</td><td>{s-a:.2f} TL</td></tr>"
     return render_template("table.html",title="Maaşlar",subtitle="Maaş özeti.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th></tr>{trs}</table></div>")
-
 @app.route("/admin/attendance")
 def attendance():
     if not admin(): return redirect("/admin/login")
     rows=q("select a.*,p.full_name from attendance_logs a join personnel p on p.id=a.person_id order by a.id desc limit 300",fetch=True)
     trs="".join([f"<tr><td>{r['full_name']}</td><td>{'Giriş' if r['event_type']=='entry' else 'Çıkış'}</td><td>{r['event_time']}</td><td>{warning_for(r['event_type'],r['event_time']) or '-'}</td></tr>" for r in rows])
     return render_template("table.html",title="Giriş Çıkış",subtitle="Giriş/çıkış kayıtları.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Tip</th><th>Zaman</th><th>Uyarı</th></tr>{trs}</table></div>")
-
 @app.route("/admin/notifications")
 def notifications_page():
     if not admin(): return redirect("/admin/login")
     rows=q("select n.*,p.full_name from notifications n left join personnel p on p.id=n.person_id order by n.id desc limit 300",fetch=True)
     trs="".join([f"<tr><td>{r['created_at']}</td><td>{r['full_name'] or 'Genel'}</td><td>{r['event_type']}</td><td>{r['message']}</td></tr>" for r in rows])
-    return render_template("table.html",title="Bildirimler",subtitle="Panelde tüm bildirimler görünür; personel uygulamasında sadece kişiye özel olanlar görünür.",body=f"<div class='card'><table class='table'><tr><th>Zaman</th><th>Personel</th><th>Tip</th><th>Mesaj</th></tr>{trs}</table></div>")
-
+    return render_template("table.html",title="Bildirimler",subtitle="Panelde tüm bildirimler görünür; personelde sadece kendi bildirimi görünür.",body=f"<div class='card'><table class='table'><tr><th>Zaman</th><th>Personel</th><th>Tip</th><th>Mesaj</th></tr>{trs}</table></div>")
 @app.route("/admin/reports")
 def reports():
     if not admin(): return redirect("/admin/login")
@@ -240,7 +217,6 @@ def reports():
     for r in rows:
         s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{r['monthly_days']}</td><td>{r['late_entries']}</td><td>{r['early_exits']}</td><td>{a:.2f} TL</td><td>{s-a:.2f} TL</td></tr>"
     return render_template("table.html",title="Aylık Rapor",subtitle="PDF rapor.",body=f"<div class='card'><a class='btn btn-green' href='/admin/reports/pdf'>PDF İndir</a></div><div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Gün</th><th>Geç</th><th>Erken</th><th>Avans</th><th>Kalan Maaş</th></tr>{trs}</table></div>")
-
 @app.route("/admin/reports/pdf")
 def reports_pdf():
     if not admin(): return redirect("/admin/login")
@@ -254,37 +230,32 @@ def reports_pdf():
     return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=boztek_aylik_rapor.pdf"})
 
 @app.route("/api/health")
-def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"personal-notifications"})
-
+def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"qr-entry"})
 @app.route("/api/personnel")
 def api_personnel():
     m=datetime.now().strftime("%Y-%m")
     rows=q("select p.id,p.full_name,p.department,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days from personnel p left join advances a on a.person_id=p.id where p.active=1 group by p.id order by p.full_name",(m,),fetch=True)
     return jsonify([{"id":r["id"],"full_name":r["full_name"],"department":r["department"],"monthly_days":r["monthly_days"],"annual_leave_remaining":r["annual_leave_remaining"],"salary":float(r["salary"] or 0),"total_advance":float(r["total_advance"] or 0)} for r in rows])
-
 @app.route("/api/entry",methods=["GET","POST"])
 def api_entry():
     pid=val("person_id"); t=now_str()
     if not pid: return jsonify({"status":"error","message":"person_id eksik"}),400
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'entry',%s)",(pid,t))
-    return jsonify({"status":"ok","event_type":"entry","person_id":int(pid),"event_time":t,"warning":warning_for("entry",t)})
-
+    p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
+    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"entry","person_id":int(pid),"event_time":t,"warning":warning_for("entry",t)})
 @app.route("/api/exit",methods=["GET","POST"])
 def api_exit():
     pid=val("person_id"); t=now_str()
     if not pid: return jsonify({"status":"error","message":"person_id eksik"}),400
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'exit',%s)",(pid,t))
-    return jsonify({"status":"ok","event_type":"exit","person_id":int(pid),"event_time":t,"warning":warning_for("exit",t)})
-
+    p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
+    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"exit","person_id":int(pid),"event_time":t,"warning":warning_for("exit",t)})
 @app.route("/api/today-status")
 def api_today_status(): return jsonify(today_status_rows())
-
 @app.route("/api/attendance")
 def api_attendance(): return jsonify(q("select a.id,a.person_id,p.full_name,a.event_type,a.event_time from attendance_logs a join personnel p on p.id=a.person_id order by a.id desc limit 100",fetch=True))
-
 @app.route("/api/leaves",methods=["GET"])
 def api_leaves(): return jsonify(q("select l.id,l.person_id,p.full_name,l.start_date,l.end_date,l.days_count,l.status from leaves l join personnel p on p.id=l.person_id order by l.id desc limit 100",fetch=True))
-
 @app.route("/api/leaves",methods=["POST"])
 @app.route("/api/leave-add",methods=["GET","POST"])
 def api_leave_add():
@@ -297,7 +268,6 @@ def api_leave_add():
     q("update personnel set annual_leave_used=annual_leave_used+%s,annual_leave_remaining=annual_leave_remaining-%s where id=%s",(count,count,pid))
     notify("İzin onaylandı",f"{count} günlük iznin işlendi.",pid)
     return jsonify({"status":"ok","person_id":pid,"days_count":count})
-
 @app.route("/api/employee-login",methods=["GET","POST"])
 def employee_login():
     u=val("username"); pw=val("password")
@@ -305,20 +275,17 @@ def employee_login():
     if not p: return jsonify({"status":"error","message":"Kullanıcı adı veya şifre hatalı"}),401
     token=p.get("token") or secrets.token_hex(24); q("update personnel set token=%s where id=%s",(token,p["id"]))
     return jsonify({"status":"ok","token":token,"person":person_summary(p["id"])})
-
 @app.route("/api/employee-me",methods=["GET","POST"])
 def employee_me():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
     if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
     return jsonify({"status":"ok","person":person_summary(p["id"])})
-
 @app.route("/api/employee-advances",methods=["GET","POST"])
 def employee_advances():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
     if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
     rows=q("select id,amount,note,status from advances where person_id=%s order by id desc limit 50",(p["id"],),fetch=True)
     return jsonify({"status":"ok","advances":[{"id":r["id"],"amount":float(r["amount"] or 0),"note":r["note"] or "","status":r["status"]} for r in rows]})
-
 @app.route("/api/employee-leave-request",methods=["GET","POST"])
 def employee_leave_request():
     token=val("token"); start=val("start_date"); end=val("end_date"); note=val("note","")
@@ -329,7 +296,6 @@ def employee_leave_request():
     q("insert into leave_requests(person_id,start_date,end_date,days_count,note,status,created_at) values(%s,%s,%s,%s,%s,'Beklemede',%s)",(p["id"],start,end,count,note,now_str()))
     notify("Yeni izin talebi",f"{p['full_name']} {count} günlük izin talebi gönderdi.",p["id"])
     return jsonify({"status":"ok","message":"İzin talebi gönderildi","days_count":count})
-
 @app.route("/api/employee-notifications",methods=["GET","POST"])
 def employee_notifications():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)

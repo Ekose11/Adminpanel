@@ -1,9 +1,9 @@
-KİŞİYE ÖZEL BİLDİRİM SERVER
+QR GİRİŞ SERVER
 
-Bu sürümde:
-- Avans bildirimi sadece avans girilen personelin uygulamasında görünür.
-- İzin onayı sadece ilgili personelde görünür.
-- Personel uygulamasında /api/employee-notifications sadece token sahibinin bildirimlerini döndürür.
+Eklenen:
+- Panel menüsü: QR Kartları
+- Her personel için QR kod: BOZTEK:personel_id
+- QR terminal uygulaması bu kodu okutunca /api/entry veya /api/exit gönderir.
 
 Render:
 Build Command: pip install -r requirements.txt
