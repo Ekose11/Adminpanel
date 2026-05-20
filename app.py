@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, Response
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from urllib.parse import urlparse, unquote
 from io import BytesIO
 import os, secrets, pg8000
@@ -73,7 +74,8 @@ def before():
 
 def admin(): return session.get("admin_ok") is True
 def val(n,d=None): return request.form.get(n) or request.args.get(n) or d
-def now_str(): return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+def now_tr(): return datetime.now(ZoneInfo("Europe/Istanbul"))
+def now_str(): return now_tr().strftime("%Y-%m-%d %H:%M:%S")
 def notify(event_type, message, person_id=None): q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id,event_type,message,now_str()))
 def days_between(a,b):
     s=datetime.strptime(a,"%Y-%m-%d").date(); e=datetime.strptime(b,"%Y-%m-%d").date()
@@ -251,6 +253,96 @@ def reports_pdf():
     table=Table(data,repeatRows=1); table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#1e293b")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.5,colors.grey),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#eef2f7")])]))
     story.append(table); doc.build(story); pdf=buf.getvalue(); buf.close()
     return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=personel_aylik_rapor.pdf"})
+
+
+@app.route("/api/server-time")
+def api_server_time():
+    n = now_tr()
+    return jsonify({"status":"ok","timezone":"Europe/Istanbul","date":n.strftime("%Y-%m-%d"),"time":n.strftime("%H:%M:%S"),"datetime":n.strftime("%Y-%m-%d %H:%M:%S")})
+
+def _payload_value(*names):
+    data = request.get_json(silent=True) or {}
+    for name in names:
+        if name in data and data.get(name) is not None:
+            return str(data.get(name)).strip()
+        v = request.form.get(name) or request.args.get(name)
+        if v:
+            return str(v).strip()
+    return ""
+
+def _parse_qr_payload(raw):
+    raw = (raw or "").strip()
+    if raw.startswith("PERSONEL:"):
+        parts = raw.split(":", 2)
+        if len(parts) == 3:
+            return parts[1], parts[2]
+    # Eski/yedek formatlar: id|token veya id:token
+    if "|" in raw:
+        parts = raw.split("|", 1)
+        return parts[0], parts[1]
+    if ":" in raw:
+        parts = raw.split(":", 1)
+        return parts[0], parts[1]
+    return "", raw
+
+@app.route("/api/my-qr", methods=["GET", "POST"])
+def api_my_qr():
+    token = _payload_value("token")
+    p = q("select id,full_name,department,token from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+    if not p:
+        return jsonify({"status":"error","message":"geçersiz giriş"}), 401
+    if not p.get("token"):
+        new_token = secrets.token_hex(24)
+        q("update personnel set token=%s where id=%s", (new_token, p["id"]))
+        p["token"] = new_token
+    qr_data = f"PERSONEL:{p['id']}:{p['token']}"
+    return jsonify({"status":"ok","person_id":p["id"],"full_name":p["full_name"],"department":p["department"],"qr_data":qr_data})
+
+@app.route("/api/qr/verify", methods=["GET", "POST"])
+def api_qr_verify():
+    raw = _payload_value("qr_data", "qr", "code", "barcode", "data")
+    person_id = _payload_value("person_id", "id")
+    token = _payload_value("token", "qr_token")
+
+    if raw:
+        parsed_id, parsed_token = _parse_qr_payload(raw)
+        person_id = person_id or parsed_id
+        token = token or parsed_token
+
+    if not person_id or not token:
+        return jsonify({"status":"error","message":"QR eksik veya bozuk"}), 400
+
+    p = q("select id,full_name,department,token from personnel where id=%s and active=1", (person_id,), fetch=True, one=True)
+    if not p:
+        return jsonify({"status":"error","message":"Personel bulunamadı"}), 404
+    if str(p.get("token") or "") != str(token):
+        return jsonify({"status":"error","message":"Bu QR kod bu personele ait değil"}), 403
+
+    today = now_tr().date().isoformat()
+    last = q("select event_type,event_time from attendance_logs where person_id=%s and substring(event_time,1,10)=%s order by id desc limit 1", (p["id"], today), fetch=True, one=True)
+    requested = _payload_value("event_type", "type", "action").lower()
+    if requested in ["entry", "giris", "giriş", "in"]:
+        event_type = "entry"
+    elif requested in ["exit", "cikis", "çıkış", "out"]:
+        event_type = "exit"
+    else:
+        event_type = "exit" if last and last.get("event_type") == "entry" else "entry"
+
+    t = now_str()
+    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,%s,%s)", (p["id"], event_type, t))
+    label = "Giriş" if event_type == "entry" else "Çıkış"
+    notify("QR " + label, f"{p['full_name']} {label.lower()} kaydı oluşturuldu.", p["id"])
+    return jsonify({
+        "status":"ok",
+        "message": f"{label} kaydı alındı",
+        "person_id": p["id"],
+        "full_name": p["full_name"],
+        "department": p["department"],
+        "event_type": event_type,
+        "event_label": label,
+        "event_time": t,
+        "warning": warning_for(event_type, t)
+    })
 
 @app.route("/api/health")
 def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"qr-entry"})
