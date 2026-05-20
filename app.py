@@ -329,6 +329,6 @@ def qr_exit(person_id):
     return render_template("qr_result.html", title="Çıkış Kaydedildi", person=p, time=t, color="red")
 
 base.html menüsüne de şu satırı ekle:
-<a href="/admin/qr">🔳 QR Giriş / Çıkış</a>
+<a href="/admin/qr"> QR Giriş / Çıkış</a>
 if __name__=="__main__":
     app.run(host="0.0.0.0",port=int(os.environ.get("PORT",10000)))
