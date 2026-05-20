@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, redirect, url_for, render_template_string, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date
-import sqlite3, secrets, os, io, base64, qrcode
+import sqlite3, secrets, os, io, base64, segno
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'premium-personel-secret-key')
@@ -139,7 +139,7 @@ def api_my_qr():
     con=db(); s=con.execute('SELECT * FROM staff WHERE id=? AND qr_token=?',(staff_id,token)).fetchone(); con.close()
     if not s: return jsonify(ok=False,error='QR yetkisi reddedildi'),403
     data=make_qr_data(s['id'],s['qr_token'])
-    return jsonify(ok=True, qr_data=data, qr_image='data:image/png;base64,'+qr_png_base64(data))
+    return jsonify(ok=True, qr_data=data, qr_image='data:image/svg+xml;base64,'+qr_png_base64(data))
 
 @app.route('/api/qr/verify', methods=['POST'])
 def api_qr_verify():
