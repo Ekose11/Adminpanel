@@ -1,18 +1,10 @@
-BOZTEK FULL UPGRADE SERVER
+KİŞİYE ÖZEL BİLDİRİM SERVER
 
-Eklenenler:
-- Profesyonel aylık PDF raporu:
-  logo, tarih/saat, toplam çalışma günü, geç giriş, erken çıkış, maaş + avans özeti.
-- Canlı dashboard:
-  işte olan kişi sayısı, bugün giriş yapanlar, geç kalanlar, erken çıkanlar.
-- Bildirim sistemi:
-  yeni avans, izin onaylandı, maaş yattı bildirimi.
-- Personel uygulaması API:
-  avans geçmişi, izin talebi gönderme, bildirimler.
+Bu sürümde:
+- Avans bildirimi sadece avans girilen personelin uygulamasında görünür.
+- İzin onayı sadece ilgili personelde görünür.
+- Personel uygulamasında /api/employee-notifications sadece token sahibinin bildirimlerini döndürür.
 
 Render:
-Build Command:
-pip install -r requirements.txt
-
-Start Command:
-gunicorn --workers 1 --threads 4 --timeout 120 app:app
+Build Command: pip install -r requirements.txt
+Start Command: gunicorn --workers 1 --threads 4 --timeout 120 app:app

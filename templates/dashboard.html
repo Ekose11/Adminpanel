@@ -1,13 +1,1 @@
-{% extends "base.html" %}
-{% block content %}
-<meta http-equiv="refresh" content="10">
-<div class="hero"><div class="title">Canlı Dashboard</div><div class="subtitle">İşte olan kişi sayısı, bugün giriş yapanlar, geç gelenler ve erken çıkanlar otomatik güncellenir.</div></div>
-<div class="stats">
-  <div class="stat blue"><div class="num">{{ stats.personel }}</div><div class="label">Toplam Personel</div></div>
-  <div class="stat green"><div class="num">{{ stats.inside }}</div><div class="label">İşte Olan</div></div>
-  <div class="stat orange"><div class="num">{{ stats.late }}</div><div class="label">Geç Giriş</div></div>
-  <div class="stat red"><div class="num">{{ stats.early }}</div><div class="label">Erken Çıkış</div></div>
-</div>
-<div class="card"><h2>Bugünkü Personel Durumu</h2><div class="table-wrap"><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Durum</th><th>Son İşlem</th><th>Uyarı</th></tr>{% for r in today_status %}<tr><td><b>{{r.full_name}}</b></td><td>{{r.department}}</td><td>{% if r.status=='inside' %}<span class="badge green">İşte</span>{% elif r.status=='out' %}<span class="badge red">Çıkış yaptı</span>{% else %}<span class="badge blue">Bekleniyor</span>{% endif %}</td><td>{{r.last_time or '-'}}</td><td>{% if r.warning %}<span class="badge orange">{{r.warning}}</span>{% else %}-{% endif %}</td></tr>{% endfor %}</table></div></div>
-<div class="card"><h2>Son Bildirimler</h2><div class="table-wrap"><table class="table"><tr><th>Zaman</th><th>Tip</th><th>Mesaj</th></tr>{% for n in notifications %}<tr><td>{{n.created_at}}</td><td><span class="badge blue">{{n.event_type}}</span></td><td>{{n.message}}</td></tr>{% endfor %}</table></div></div>
-{% endblock %}
+{% extends "base.html" %}{% block content %}<meta http-equiv="refresh" content="10"><div class="hero"><div class="title">Canlı Dashboard</div><div class="subtitle">Kişiye özel bildirim sistemi aktif.</div></div><div class="stats"><div class="stat"><div class="num">{{stats.personel}}</div><div>Personel</div></div><div class="stat"><div class="num">{{stats.inside}}</div><div>İşte Olan</div></div><div class="stat"><div class="num">{{stats.late}}</div><div>Geç Giriş</div></div><div class="stat"><div class="num">{{stats.early}}</div><div>Erken Çıkış</div></div></div><div class="card"><h2>Bugünkü Durum</h2><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Durum</th><th>Son İşlem</th><th>Uyarı</th></tr>{% for r in today_status %}<tr><td>{{r.full_name}}</td><td>{{r.department}}</td><td>{{r.status}}</td><td>{{r.last_time or '-'}}</td><td>{{r.warning or '-'}}</td></tr>{% endfor %}</table></div>{% endblock %}
