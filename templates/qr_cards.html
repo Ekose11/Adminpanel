@@ -7,8 +7,8 @@
   <div class="qr-card">
     <div class="qr-name">{{p.full_name}}</div>
     <div>{{p.department}}</div>
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=BOZTEK:{{p.id}}" alt="QR">
-    <div class="qr-code">BOZTEK:{{p.id}}</div>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=PERSONEL:{{p.id}}:{{p.token}}" alt="QR">
+    <div class="qr-code">PERSONEL:{{p.id}}:{{p.token}}</div>
   </div>
 {% endfor %}
 </div>

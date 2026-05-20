@@ -1,23 +1,24 @@
 from flask import Flask, render_template, request, redirect, session, flash, jsonify, Response
 from datetime import datetime, date
-from zoneinfo import ZoneInfo
 from urllib.parse import urlparse, unquote
 from io import BytesIO
 import os, secrets, pg8000
+from werkzeug.utils import secure_filename
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "premium-personel-secret")
-TR_TZ = ZoneInfo("Europe/Istanbul")
+app.secret_key = os.environ.get("SECRET_KEY", "personel-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "eren")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "1234")
 READY = False
 ENTRY_LIMIT = "09:00:00"
 EXIT_LIMIT = "18:00:00"
+UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "static", "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def parse_db_url():
     if not DATABASE_URL:
@@ -48,18 +49,19 @@ def q(sql, params=None, fetch=False, one=False):
 
 def init_db():
     global READY
-    q("create table if not exists personnel(id serial primary key,full_name text not null,department text not null,annual_leave_total integer default 14,annual_leave_used integer default 0,annual_leave_remaining integer default 14,salary numeric default 0,active integer default 1,username text unique,password text,token text unique,phone text,address text,photo_data text)")
+    q("create table if not exists personnel(id serial primary key,full_name text not null,department text not null,annual_leave_total integer default 14,annual_leave_used integer default 0,annual_leave_remaining integer default 14,salary numeric default 0,active integer default 1,username text unique,password text,token text unique)")
     q("create table if not exists advances(id serial primary key,person_id integer references personnel(id) on delete cascade,amount numeric not null,note text,status text default 'Beklemede')")
     q("create table if not exists leaves(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,status text default 'İzinli')")
     q("create table if not exists attendance_logs(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,note text,status text default 'Beklemede',created_at text not null)")
     q("create table if not exists notifications(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,message text not null,created_at text not null,is_read integer default 0)")
-    q("create table if not exists payroll_events(id serial primary key,person_id integer references personnel(id) on delete cascade,amount numeric default 0,message text,created_at text not null)")
-    for col,typ in [("phone","text"),("address","text"),("photo_data","text")]:
-        try: q(f"alter table personnel add column {col} {typ}")
+    for sql in [
+        "alter table personnel add column phone text",
+        "alter table personnel add column address text",
+        "alter table personnel add column photo_url text"
+    ]:
+        try: q(sql)
         except Exception: pass
-    try: q("alter table advances add column note text")
-    except Exception: pass
     try: q("alter table notifications add column person_id integer references personnel(id) on delete cascade")
     except Exception: pass
     READY=True
@@ -71,9 +73,7 @@ def before():
 
 def admin(): return session.get("admin_ok") is True
 def val(n,d=None): return request.form.get(n) or request.args.get(n) or d
-def now_str(): return datetime.now(TR_TZ).strftime("%Y-%m-%d %H:%M:%S")
-def today_iso(): return datetime.now(TR_TZ).date().isoformat()
-def month_key(): return datetime.now(TR_TZ).strftime("%Y-%m")
+def now_str(): return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 def notify(event_type, message, person_id=None): q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id,event_type,message,now_str()))
 def days_between(a,b):
     s=datetime.strptime(a,"%Y-%m-%d").date(); e=datetime.strptime(b,"%Y-%m-%d").date()
@@ -91,10 +91,10 @@ def person_summary(pid):
     p=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id where p.id=%s group by p.id",(pid,),fetch=True,one=True)
     if not p: return None
     s=float(p["salary"] or 0); a=float(p["total_advance"] or 0)
-    return {"id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":s,"total_advance":a,"remaining_salary":s-a,"annual_leave_total":p["annual_leave_total"],"annual_leave_used":p["annual_leave_used"],"annual_leave_remaining":p["annual_leave_remaining"],"phone":p.get("phone") or "","address":p.get("address") or "","photo_data":p.get("photo_data") or ""}
+    return {"id":p["id"],"full_name":p["full_name"],"department":p["department"],"phone":p.get("phone") or "","address":p.get("address") or "","photo_url":p.get("photo_url") or "","salary":s,"total_advance":a,"remaining_salary":s-a,"annual_leave_total":p["annual_leave_total"],"annual_leave_used":p["annual_leave_used"],"annual_leave_remaining":p["annual_leave_remaining"]}
 
 def today_status_rows():
-    today=today_iso()
+    today=date.today().isoformat()
     people=q("select * from personnel where active=1 order by full_name",fetch=True)
     logs=q("select distinct on (person_id) person_id,event_type,event_time from attendance_logs where substring(event_time,1,10)=%s order by person_id,id desc",(today,),fetch=True)
     log_map={r["person_id"]:r for r in logs}; out=[]
@@ -107,7 +107,7 @@ def today_status_rows():
     return out
 
 def report_rows():
-    m=month_key()
+    m=datetime.now().strftime("%Y-%m")
     return q("select p.id,p.full_name,p.department,p.annual_leave_used,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days,(select count(*) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s and substring(al.event_time,12,8)>%s) late_entries,(select count(*) from attendance_logs al where al.person_id=p.id and al.event_type='exit' and substring(al.event_time,1,7)=%s and substring(al.event_time,12,8)<%s) early_exits from personnel p left join advances a on a.person_id=p.id group by p.id order by p.full_name",(m,m,ENTRY_LIMIT,m,EXIT_LIMIT),fetch=True)
 
 @app.route("/")
@@ -146,6 +146,19 @@ def personnel():
             flash("Personel eklendi.")
         except Exception: flash("Personel eklenemedi. Kullanıcı adı aynı olabilir.")
     return render_template("personnel.html",title="Personel",rows=q("select * from personnel order by id desc",fetch=True))
+
+@app.route("/admin/personnel-cards")
+def personnel_cards():
+    if not admin(): return redirect("/admin/login")
+    rows=q("select id,full_name,department,phone,address,photo_url,active from personnel order by full_name",fetch=True)
+    return render_template("personnel_cards.html", title="Personel Kartvizitleri", rows=rows)
+
+@app.route("/api/personnel-cards-json")
+def personnel_cards_json():
+    if not admin(): return jsonify({"status":"error","message":"yetkisiz"}),401
+    rows=q("select id,full_name,department,phone,address,photo_url,active from personnel order by full_name",fetch=True)
+    return jsonify({"status":"ok","personnel":rows,"server_time":now_str()})
+
 @app.route("/admin/personnel/<int:pid>/edit",methods=["GET","POST"])
 def edit_person(pid):
     if not admin(): return redirect("/admin/login")
@@ -153,7 +166,7 @@ def edit_person(pid):
     if not p: return redirect("/admin/personnel")
     if request.method=="POST":
         total=int(request.form.get("annual_leave_total",0)); used=int(request.form.get("annual_leave_used",0)); rem=max(total-used,0); token=p.get("token") or secrets.token_hex(24)
-        q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s where id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,pid))
+        q("update personnel set full_name=%s,department=%s,username=%s,password=%s,annual_leave_total=%s,annual_leave_used=%s,annual_leave_remaining=%s,salary=%s,active=%s,token=%s,phone=%s,address=%s,photo_url=%s where id=%s",(request.form["full_name"],request.form["department"],request.form.get("username") or None,request.form.get("password") or None,total,used,rem,float(request.form.get("salary",0)),int(request.form.get("active",1)),token,request.form.get("phone") or "",request.form.get("address") or "",request.form.get("photo_url") or "",pid))
         flash("Personel güncellendi."); return redirect("/admin/personnel")
     return render_template("edit.html",title="Düzenle",p=p)
 @app.route("/admin/personnel/<int:pid>/delete",methods=["POST"])
@@ -206,8 +219,8 @@ def salary():
     if not admin(): return redirect("/admin/login")
     rows=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id group by p.id order by full_name",fetch=True); trs=""
     for r in rows:
-        s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} TL</td><td>{a:.2f} TL</td><td>{s-a:.2f} TL</td><td><form method='post' action='/admin/payroll-paid/{r['id']}'><button class='btn btn-green'>Maaş Yatırıldı Bildirimi</button></form></td></tr>"
-    return render_template("table.html",title="Maaşlar",subtitle="Maaş özeti.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th><th>Bildirim</th></tr>{trs}</table></div>")
+        s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} TL</td><td>{a:.2f} TL</td><td>{s-a:.2f} TL</td></tr>"
+    return render_template("table.html",title="Maaşlar",subtitle="Maaş özeti.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th></tr>{trs}</table></div>")
 @app.route("/admin/attendance")
 def attendance():
     if not admin(): return redirect("/admin/login")
@@ -231,7 +244,7 @@ def reports():
 def reports_pdf():
     if not admin(): return redirect("/admin/login")
     rows=report_rows(); buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=24,leftMargin=24,topMargin=24,bottomMargin=24)
-    styles=getSampleStyleSheet(); story=[Paragraph("Personel Sistemi",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now(TR_TZ).strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
+    styles=getSampleStyleSheet(); story=[Paragraph("Personel Sistemi",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now().strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
     data=[["Personel","Bolum","Calisma","Gec","Erken","Avans TL","Kalan Maas TL"]]
     for r in rows:
         s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); data.append([str(r["full_name"]),str(r["department"]),str(r["monthly_days"]),str(r["late_entries"]),str(r["early_exits"]),f"{a:.2f}",f"{s-a:.2f}"])
@@ -239,120 +252,13 @@ def reports_pdf():
     story.append(table); doc.build(story); pdf=buf.getvalue(); buf.close()
     return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=personel_aylik_rapor.pdf"})
 
-
-@app.route("/api/server-time")
-def api_server_time():
-    return jsonify({"status":"ok","timezone":"Europe/Istanbul","datetime":now_str(),"date":today_iso(),"time":datetime.now(TR_TZ).strftime("%H:%M:%S")})
-
-@app.route("/api/my-qr", methods=["GET","POST"])
-def api_my_qr():
-    token=val("token")
-    p=q("select id,full_name,token from personnel where token=%s and active=1",(token,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
-    qr_payload=f"PERSONEL:{p['id']}:{p['token']}"
-    return jsonify({"status":"ok","person_id":p["id"],"full_name":p["full_name"],"qr_payload":qr_payload,"token":p["token"]})
-
-@app.route("/api/qr/verify", methods=["GET","POST"])
-def api_qr_verify():
-    qr_payload=val("qr_payload") or val("qr") or ""
-    action=val("action","entry")
-    try:
-        _, pid, token = qr_payload.split(":",2)
-        pid=int(pid)
-    except Exception:
-        return jsonify({"status":"error","message":"QR formatı geçersiz"}),400
-    p=q("select id,full_name,token from personnel where id=%s and token=%s and active=1",(pid,token),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"Bu QR bu personele ait değil veya geçersiz"}),403
-    event_type="exit" if action=="exit" else "entry"
-    t=now_str()
-    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,%s,%s)",(pid,event_type,t))
-    return jsonify({"status":"ok","person_id":pid,"full_name":p["full_name"],"event_type":event_type,"event_time":t,"warning":warning_for(event_type,t)})
-
-@app.route("/api/employee-profile", methods=["GET","POST"])
-def api_employee_profile():
-    token=val("token")
-    p=q("select * from personnel where token=%s and active=1",(token,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
-    if request.method=="POST":
-        phone=val("phone","")
-        address=val("address","")
-        photo_data=val("photo_data",p.get("photo_data") or "")
-        q("update personnel set phone=%s,address=%s,photo_data=%s where id=%s",(phone,address,photo_data,p["id"]))
-        notify("Profil güncellendi", "Personel profil bilgileri güncellendi.", p["id"])
-        return jsonify({"status":"ok","message":"Profil kaydedildi","person":person_summary(p["id"])})
-    return jsonify({"status":"ok","person":person_summary(p["id"])})
-
-@app.route("/admin/payroll-paid/<int:pid>", methods=["POST","GET"])
-def payroll_paid(pid):
-    if not admin(): return redirect("/admin/login")
-    p=person_summary(pid)
-    if not p: flash("Personel bulunamadı."); return redirect("/admin/salary")
-    amount=float(p["remaining_salary"] or 0)
-    q("insert into payroll_events(person_id,amount,message,created_at) values(%s,%s,%s,%s)",(pid,amount,"Maaş yatırıldı bildirimi gönderildi",now_str()))
-    notify("Maaş yatırıldı", f"{amount:.2f} TL maaş ödemen yatırıldı.", pid)
-    flash("Maaş yatırıldı bildirimi gönderildi.")
-    return redirect("/admin/salary")
-
-@app.route("/admin/puantaj")
-def puantaj():
-    if not admin(): return redirect("/admin/login")
-    rows=report_rows(); body=""; month=month_key()
-    for r in rows:
-        salary=float(r["salary"] or 0); day_price=salary/30 if salary else 0
-        came=int(r["monthly_days"] or 0); absent=max(30-came,0); cut=absent*day_price
-        net=max(salary-float(r["total_advance"] or 0)-cut,0)
-        body+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{came}</td><td>{absent}</td><td>{cut:.2f} TL</td><td>{net:.2f} TL</td></tr>"
-    return render_template("table.html",title="Puantaj Sistemi",subtitle=f"{month} ayı - gelmediği gün otomatik maaş kesintisi hesaplanır.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Geldiği Gün</th><th>Gelmediği Gün</th><th>Kesinti</th><th>Net Maaş</th></tr>{body}</table></div>")
-
-@app.route("/personel/login", methods=["GET","POST"])
-def personel_login_page():
-    if request.method=="POST":
-        u=request.form.get("username"); pw=request.form.get("password")
-        p=q("select * from personnel where username=%s and password=%s and active=1",(u,pw),fetch=True,one=True)
-        if p:
-            token=p.get("token") or secrets.token_hex(24); q("update personnel set token=%s where id=%s",(token,p["id"]))
-            session["personel_token"]=token; return redirect("/personel/panel")
-        flash("Hatalı kullanıcı adı veya şifre")
-    return render_template("personel_login.html")
-
-@app.route("/personel/logout")
-def personel_logout():
-    session.pop("personel_token",None); return redirect("/personel/login")
-
-def current_personel():
-    token=session.get("personel_token")
-    if not token: return None
-    return q("select * from personnel where token=%s and active=1",(token,),fetch=True,one=True)
-
-@app.route("/personel/panel")
-def personel_panel():
-    p=current_personel()
-    if not p: return redirect("/personel/login")
-    summary=person_summary(p["id"])
-    notes=q("select * from notifications where person_id=%s order by id desc limit 8",(p["id"],),fetch=True)
-    qr_payload=f"PERSONEL:{p['id']}:{p['token']}"
-    return render_template("personel_panel.html",p=summary,notes=notes,qr_payload=qr_payload)
-
-@app.route("/personel/profile", methods=["GET","POST"])
-def personel_profile():
-    p=current_personel()
-    if not p: return redirect("/personel/login")
-    if request.method=="POST":
-        phone=request.form.get("phone","")
-        address=request.form.get("address","")
-        photo_data=request.form.get("photo_data",p.get("photo_data") or "")
-        q("update personnel set phone=%s,address=%s,photo_data=%s where id=%s",(phone,address,photo_data,p["id"]))
-        notify("Profil güncellendi","Profil bilgilerin kaydedildi.",p["id"])
-        flash("Profil kaydedildi."); return redirect("/personel/profile")
-    return render_template("personel_profile.html",p=person_summary(p["id"]))
-
 @app.route("/api/health")
 def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"qr-entry"})
 @app.route("/api/personnel")
 def api_personnel():
-    m=month_key()
-    rows=q("select p.id,p.full_name,p.department,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days from personnel p left join advances a on a.person_id=p.id where p.active=1 group by p.id order by p.full_name",(m,),fetch=True)
-    return jsonify([{"id":r["id"],"full_name":r["full_name"],"department":r["department"],"monthly_days":r["monthly_days"],"annual_leave_remaining":r["annual_leave_remaining"],"salary":float(r["salary"] or 0),"total_advance":float(r["total_advance"] or 0)} for r in rows])
+    m=datetime.now().strftime("%Y-%m")
+    rows=q("select p.id,p.full_name,p.department,p.phone,p.address,p.photo_url,p.annual_leave_remaining,p.salary,coalesce(sum(a.amount),0) total_advance,(select count(distinct substring(event_time,1,10)) from attendance_logs al where al.person_id=p.id and al.event_type='entry' and substring(al.event_time,1,7)=%s) monthly_days from personnel p left join advances a on a.person_id=p.id where p.active=1 group by p.id order by p.full_name",(m,),fetch=True)
+    return jsonify([{"id":r["id"],"full_name":r["full_name"],"department":r["department"],"phone":r.get("phone") or "","address":r.get("address") or "","photo_url":r.get("photo_url") or "","monthly_days":r["monthly_days"],"annual_leave_remaining":r["annual_leave_remaining"],"salary":float(r["salary"] or 0),"total_advance":float(r["total_advance"] or 0)} for r in rows])
 @app.route("/api/entry",methods=["GET","POST"])
 def api_entry():
     pid=val("person_id"); t=now_str()
@@ -413,6 +319,26 @@ def employee_leave_request():
     q("insert into leave_requests(person_id,start_date,end_date,days_count,note,status,created_at) values(%s,%s,%s,%s,%s,'Beklemede',%s)",(p["id"],start,end,count,note,now_str()))
     notify("Yeni izin talebi",f"{p['full_name']} {count} günlük izin talebi gönderdi.",p["id"])
     return jsonify({"status":"ok","message":"İzin talebi gönderildi","days_count":count})
+
+@app.route("/api/profile/update",methods=["POST"])
+def api_profile_update():
+    token=val("token")
+    p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
+    if not p: return jsonify({"status":"error","message":"geçersiz giriş"}),401
+    phone=val("phone","")
+    address=val("address","")
+    photo_url=val("photo_url","")
+    f=request.files.get("photo")
+    if f and f.filename:
+        ext=os.path.splitext(f.filename)[1].lower()
+        if ext not in [".jpg",".jpeg",".png",".webp"]: ext=".jpg"
+        filename=secure_filename(f"person_{p['id']}_{int(datetime.now().timestamp())}{ext}")
+        path=os.path.join(UPLOAD_FOLDER, filename)
+        f.save(path)
+        photo_url="/static/uploads/"+filename
+    q("update personnel set phone=%s,address=%s,photo_url=%s where id=%s",(phone,address,photo_url,p["id"]))
+    return jsonify({"status":"ok","message":"Profil güncellendi","person":person_summary(p["id"])})
+
 @app.route("/api/employee-notifications",methods=["GET","POST"])
 def employee_notifications():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
