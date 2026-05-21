@@ -1,1 +1,15 @@
-{% extends "base.html" %}{% block content %}<div class="hero"><div class="title">Personel Düzenle</div></div><div class="card"><form method="post" class="form-grid"><div class="field"><label>Ad Soyad</label><input name="full_name" value="{{p.full_name}}" required></div><div class="field"><label>Bölüm</label><input name="department" value="{{p.department}}" required></div><div class="field"><label>Kullanıcı</label><input name="username" value="{{p.username or ''}}"></div><div class="field"><label>Şifre</label><input name="password" value="{{p.password or ''}}"></div><div class="field"><label>Toplam İzin</label><input name="annual_leave_total" type="number" value="{{p.annual_leave_total}}"></div><div class="field"><label>Kullanılan İzin</label><input name="annual_leave_used" type="number" value="{{p.annual_leave_used}}"></div><div class="field"><label>Maaş</label><input name="salary" type="number" step="0.01" value="{{p.salary}}"></div><div class="field"><label>Durum</label><select name="active"><option value="1" {% if p.active %}selected{% endif %}>Aktif</option><option value="0" {% if not p.active %}selected{% endif %}>Pasif</option></select></div><button class="btn">Kaydet</button></form></div>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><div class="title">QR Kartları</div><div class="subtitle">Bu kartları yazdır. Terminal uygulamasında QR okutunca giriş/çıkış kaydı server’a düşer.</div></div>
+<div class="card"><button class="btn btn-green" onclick="window.print()">QR Kartlarını Yazdır</button></div>
+<div class="qr-grid">
+{% for p in rows %}
+  <div class="qr-card">
+    <div class="qr-name">{{p.full_name}}</div>
+    <div>{{p.department}}</div>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=BOZTEK:{{p.id}}" alt="QR">
+    <div class="qr-code">BOZTEK:{{p.id}}</div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}
