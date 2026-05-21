@@ -1,1 +1,15 @@
-{% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Tek QR</div><h1>Ortak QR Kartı</h1><p>Bütün personel aynı QR'ı okutur. Personel kimliği uygulamadaki giriş hesabından gelir.</p></div></section><div class="card center"><h2>Servis Giriş / Çıkış QR</h2><img class="big-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data={{token}}" alt="Tek QR"><p class="muted">Kod: {{token}}</p><button class="btn" onclick="window.print()">QR Çıktı Al</button></div>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><div class="title">QR Kartları</div><div class="subtitle">Bu kartları yazdır. Terminal uygulamasında QR okutunca giriş/çıkış kaydı server’a düşer.</div></div>
+<div class="card"><button class="btn btn-green" onclick="window.print()">QR Kartlarını Yazdır</button></div>
+<div class="qr-grid">
+{% for p in rows %}
+  <div class="qr-card">
+    <div class="qr-name">{{p.full_name}}</div>
+    <div>{{p.department}}</div>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=BOZTEK:{{p.id}}" alt="QR">
+    <div class="qr-code">BOZTEK:{{p.id}}</div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}
