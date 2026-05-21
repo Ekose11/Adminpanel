@@ -18,7 +18,18 @@ a{text-decoration:none;color:inherit}
 .qr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.qr-card{text-align:center;border:1px solid #e5e7eb;border-radius:22px;padding:18px;background:#fff}.qr-card img{width:180px;height:180px}.qr-name{font-size:22px;font-weight:900}.qr-code{font-size:13px;color:#64748b;word-break:break-all}
 @media print{.sidebar,.hero .subtitle,.nav,.btn{display:none}.main{margin:0;width:100%;padding:0}.qr-grid{grid-template-columns:repeat(3,1fr)}.card,.hero{box-shadow:none}}
 @media(max-width:900px){.sidebar{position:relative;width:auto}.main{margin-left:0;width:auto}.layout{display:block}.stats,.form-grid,.qr-grid{grid-template-columns:1fr}}
-.qr-card{background:linear-gradient(145deg,#07111f,#10233d)!important;color:#fff!important;border:1px solid rgba(255,255,255,.16)!important;box-shadow:0 18px 40px rgba(2,6,23,.22)}
-.qr-card img{background:#fff;padding:12px;border-radius:20px;width:200px!important;height:200px!important;margin:12px auto;display:block}
-.qr-logo{width:46px;height:46px;margin:0 auto 8px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#38bdf8,#2563eb);font-size:24px}
-.qr-dept{color:#cbd5e1;margin-top:4px}.qr-hint{font-size:12px;color:#93c5fd;margin-top:8px}.qr-code{color:#94a3b8!important}
+
+.shift-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.shift-card{border:1px solid #dbeafe;border-radius:22px;padding:18px;background:linear-gradient(135deg,#ffffff,#eff6ff);display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 18px rgba(15,23,42,.06)}
+.shift-card b{font-size:22px;display:block}.shift-card span{color:#64748b;font-weight:700}.shift-time{font-weight:900;background:#dbeafe;color:#1d4ed8;border-radius:999px;padding:10px 14px;white-space:nowrap}
+.table small{color:#64748b;font-weight:700}
+@media(max-width:900px){.shift-grid{grid-template-columns:1fr}.shift-card{display:block}.shift-time{margin-top:10px;display:inline-block}}
+
+.wide-table{overflow-x:auto;border-radius:18px;border:1px solid #e5e7eb}
+.shift-month-table{min-width:1400px;font-size:13px}
+.shift-month-table th,.shift-month-table td{padding:9px 7px;vertical-align:top;white-space:nowrap}
+.sticky-name{position:sticky;left:0;background:#fff;z-index:2;min-width:160px;box-shadow:5px 0 10px rgba(15,23,42,.04)}
+.shift-month-table th.sticky-name{background:#1e293b;color:#fff;z-index:3}
+.day-head{text-align:center;min-width:72px;background:#f8fafc}
+.off-cell{background:#fee2e2;color:#991b1b;font-weight:900;text-align:center}
+.shift-month-table small{font-size:11px;color:#64748b}
