@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><div class="title">Giriş Çıkış Dosyası</div><div class="subtitle">Tarih seçerek personelin gelip gelmediğini görebilir, CSV dosyası indirebilirsin.</div></div>
+<div class="card"><form method="get" class="form-grid"><div class="field"><label>Tarih seç</label><input type="date" name="day" value="{{day}}"></div><button class="btn">Göster</button><a class="btn btn-green" href="/admin/attendance/export?day={{day}}">Dosya İndir</a></form></div>
+<div class="card"><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Vardiya</th><th>Durum</th><th>İlk Giriş</th><th>Son Çıkış</th><th>Uyarı</th><th>Kayıtlar</th></tr>{% for r in rows %}<tr><td>{{r.person.full_name}}</td><td>{{r.person.department}}</td><td>{{r.person.shift_name or '-'}}</td><td>{% if r.came %}<span class="badge green">Geldi</span>{% else %}<span class="badge red">Gelmedi</span>{% endif %}</td><td>{{r.first_entry or '-'}}</td><td>{{r.last_exit or '-'}}</td><td>{{r.warnings or '-'}}</td><td>{% for x in r.logs %}<div>{{'Giriş' if x.event_type=='entry' else 'Çıkış'}} - {{x.event_time}}</div>{% endfor %}</td></tr>{% endfor %}</table></div>
+{% endblock %}

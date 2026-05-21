@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero"><div class="title">Vardiya Listesi</div><div class="subtitle">Personele vardiya ata. QR okutulunca geç giriş ve erken çıkış buna göre hesaplanır.</div></div>
+<div class="grid-2">
+  <div class="card"><h2>Yeni Vardiya</h2><form method="post" class="form-grid"><input type="hidden" name="action" value="add"><div class="field"><label>Vardiya Adı</label><input name="name" placeholder="Örn: Servis Sabah" required></div><div class="field"><label>Başlangıç</label><input name="start_time" type="time" required></div><div class="field"><label>Bitiş</label><input name="end_time" type="time" required></div><div class="field"><label>Geç giriş toleransı/dk</label><input name="late_after_minutes" type="number" value="10"></div><button class="btn btn-green">Vardiya Ekle</button></form></div>
+  <div class="card"><h2>Personele Vardiya Ata</h2><form method="post" class="form-grid"><input type="hidden" name="action" value="assign"><div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}{% if p.shift_name %} - {{p.shift_name}}{% endif %}</option>{% endfor %}</select></div><div class="field"><label>Vardiya</label><select name="shift_id">{% for s in shifts %}<option value="{{s.id}}">{{s.name}} {{s.start_time}}-{{s.end_time}}</option>{% endfor %}</select></div><button class="btn">Ata</button></form></div>
+</div>
+<div class="card"><h2>Tanımlı Vardiyalar</h2><table class="table"><tr><th>Ad</th><th>Başlangıç</th><th>Bitiş</th><th>Tolerans</th></tr>{% for s in shifts %}<tr><td>{{s.name}}</td><td>{{s.start_time}}</td><td>{{s.end_time}}</td><td>{{s.late_after_minutes}} dk</td></tr>{% endfor %}</table></div>
+<div class="card"><h2>Personel Vardiya Listesi</h2><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Vardiya</th></tr>{% for p in people %}<tr><td>{{p.full_name}}</td><td>{{p.department}}</td><td>{{p.shift_name or '-'}}</td></tr>{% endfor %}</table></div>
+{% endblock %}
