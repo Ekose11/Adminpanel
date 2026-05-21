@@ -1,15 +1,1 @@
-{% extends "base.html" %}{% block content %}
-<div class="hero"><div><div class="title">Personel Kartvizitleri</div><div class="subtitle">Fotoğraf, telefon ve adres bilgileri server panelinde canlı görünür. Sayfa 10 saniyede bir yenilenir.</div></div><a class="btn" href="/admin/personnel">Personel Düzenle</a></div>
-<div class="card"><div class="cards-grid" id="cardsGrid">{% for p in rows %}<div class="person-card"><div class="avatar-wrap">{% if p.photo_url %}<img class="avatar" src="{{p.photo_url}}">{% else %}<div class="avatar avatar-text">{{(p.full_name or '?')[:1]}}</div>{% endif %}</div><div class="pc-content"><div class="pc-name">{{p.full_name}}</div><div class="pc-dept">{{p.department}}</div><div class="pc-line">📞 {{p.phone or 'Telefon eklenmedi'}}</div><div class="pc-line">📍 {{p.address or 'Adres eklenmedi'}}</div><span class="badge {{'green' if p.active else 'red'}}">{{'Aktif' if p.active else 'Pasif'}}</span></div></div>{% endfor %}</div></div>
-<script>
-async function loadCards(){
-  try{
-    const r=await fetch('/api/personnel-cards-json',{cache:'no-store'});
-    const j=await r.json(); if(j.status!=='ok') return;
-    const grid=document.getElementById('cardsGrid');
-    grid.innerHTML=j.personnel.map(p=>`<div class="person-card"><div class="avatar-wrap">${p.photo_url?`<img class="avatar" src="${p.photo_url}">`:`<div class="avatar avatar-text">${(p.full_name||'?').charAt(0)}</div>`}</div><div class="pc-content"><div class="pc-name">${p.full_name||''}</div><div class="pc-dept">${p.department||''}</div><div class="pc-line">📞 ${p.phone||'Telefon eklenmedi'}</div><div class="pc-line">📍 ${p.address||'Adres eklenmedi'}</div><span class="badge ${p.active?'green':'red'}">${p.active?'Aktif':'Pasif'}</span></div></div>`).join('');
-  }catch(e){}
-}
-setInterval(loadCards,10000);
-</script>
-{% endblock %}
+{% extends "base.html" %}{% block content %}<meta http-equiv="refresh" content="10"><section class="hero"><div><div class="eyebrow">Canlı</div><h1>Personel Kartvizitleri</h1><p>Fotoğraf, telefon ve adres bilgileri server üzerinden anlık güncellenir.</p></div></section><div class="business-grid">{% for p in rows %}<div class="business-card"><div class="avatar">{% if p.photo_url %}<img src="{{p.photo_url}}">{% else %}{{p.full_name[:1]}}{% endif %}</div><div><h3>{{p.full_name}}</h3><p>{{p.department}}</p><div class="info">📞 {{p.phone or 'Telefon yok'}}</div><div class="info">📍 {{p.address or 'Adres yok'}}</div></div></div>{% endfor %}</div>{% endblock %}

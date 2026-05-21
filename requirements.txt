@@ -1,5 +1,4 @@
 Flask==3.0.3
 gunicorn==22.0.0
-Werkzeug==3.0.2
-reportlab==4.2.0
-pytz==2024.1
+pg8000==1.31.2
+reportlab==4.2.2
