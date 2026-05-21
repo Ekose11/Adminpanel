@@ -2,8 +2,7 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from datetime import datetime, date, timedelta
 from urllib.parse import urlparse, unquote
 from io import BytesIO
-import os, secrets, pg8000, csv
-from zoneinfo import ZoneInfo
+import os, secrets, pg8000
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
@@ -12,14 +11,11 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "boztek-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "eren")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "1234")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "saban")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "5109")
 READY = False
 ENTRY_LIMIT = "09:00:00"
 EXIT_LIMIT = "18:00:00"
-TR_TZ = ZoneInfo("Europe/Istanbul")
-SINGLE_QR_CODE = os.environ.get("SINGLE_QR_CODE", "PERSONEL_SISTEMI_GIRIS")
-DOUBLE_SCAN_SECONDS = int(os.environ.get("DOUBLE_SCAN_SECONDS", "10"))
 
 def parse_db_url():
     if not DATABASE_URL:
@@ -51,25 +47,15 @@ def q(sql, params=None, fetch=False, one=False):
 def init_db():
     global READY
     q("create table if not exists personnel(id serial primary key,full_name text not null,department text not null,annual_leave_total integer default 14,annual_leave_used integer default 0,annual_leave_remaining integer default 14,salary numeric default 0,active integer default 1,username text unique,password text,token text unique)")
+    for col,typ in [("shift_name","text default 'Sabah'"),("shift_start","text default '09:00'"),("shift_end","text default '18:00'")]:
+        try: q(f"alter table personnel add column {col} {typ}")
+        except Exception: pass
     q("create table if not exists advances(id serial primary key,person_id integer references personnel(id) on delete cascade,amount numeric not null,note text,status text default 'Beklemede')")
     q("create table if not exists leaves(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,status text default 'İzinli')")
     q("create table if not exists attendance_logs(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key,person_id integer references personnel(id) on delete cascade,start_date text not null,end_date text not null,days_count integer default 0,note text,status text default 'Beklemede',created_at text not null)")
     q("create table if not exists notifications(id serial primary key,person_id integer references personnel(id) on delete cascade,event_type text not null,message text not null,created_at text not null,is_read integer default 0)")
-    q("create table if not exists shifts(id serial primary key,name text not null,start_time text not null,end_time text not null,late_after_minutes integer default 10,active integer default 1)")
-    q("create table if not exists salary_payments(id serial primary key,person_id integer references personnel(id) on delete cascade,amount numeric default 0,note text,created_at text not null)")
     try: q("alter table notifications add column person_id integer references personnel(id) on delete cascade")
-    except Exception: pass
-    try: q("alter table personnel add column shift_id integer references shifts(id)")
-    except Exception: pass
-    try: q("alter table personnel add column phone text")
-    except Exception: pass
-    try: q("alter table personnel add column address text")
-    except Exception: pass
-    try:
-        cnt=q("select count(*) c from shifts",fetch=True,one=True)
-        if int(cnt["c"] or 0)==0:
-            q("insert into shifts(name,start_time,end_time,late_after_minutes,active) values('Sabah','08:00','16:00',10,1),('Akşam','16:00','00:00',10,1),('Gece','00:00','08:00',10,1)")
     except Exception: pass
     READY=True
 
@@ -80,8 +66,7 @@ def before():
 
 def admin(): return session.get("admin_ok") is True
 def val(n,d=None): return request.form.get(n) or request.args.get(n) or d
-def now_tr(): return datetime.now(TR_TZ)
-def now_str(): return now_tr().strftime("%Y-%m-%d %H:%M:%S")
+def now_str(): return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 def notify(event_type, message, person_id=None): q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id,event_type,message,now_str()))
 def days_between(a,b):
     s=datetime.strptime(a,"%Y-%m-%d").date(); e=datetime.strptime(b,"%Y-%m-%d").date()
@@ -95,49 +80,59 @@ def warning_for(event_type,event_time):
     if event_type=="exit" and t<EXIT_LIMIT: return "Erken çıkış"
     return ""
 
-def person_shift(pid):
-    return q("select s.* from personnel p left join shifts s on s.id=p.shift_id where p.id=%s",(pid,),fetch=True,one=True)
 
-def shift_warning(pid,event_type,event_time):
-    sh=person_shift(pid)
-    if not sh:
-        return warning_for(event_type,event_time)
-    try:
-        t=datetime.strptime(time_part(event_time)[:5],"%H:%M").time()
-        start=datetime.strptime(sh["start_time"],"%H:%M").time()
-        end=datetime.strptime(sh["end_time"],"%H:%M").time()
-        late_min=int(sh.get("late_after_minutes") or 10)
-        start_dt=datetime.combine(date.today(),start)+timedelta(minutes=late_min)
-        end_dt=datetime.combine(date.today(),end)
-        t_dt=datetime.combine(date.today(),t)
-        if sh["end_time"]=="00:00": end_dt=datetime.combine(date.today(),datetime.strptime("23:59","%H:%M").time())
-        if event_type=="entry" and t_dt>start_dt: return "Geç giriş"
-        if event_type=="exit" and t_dt<end_dt: return "Erken çıkış"
-    except Exception:
-        return warning_for(event_type,event_time)
-    return ""
+def month_bounds(month=None):
+    if not month:
+        month=datetime.now().strftime("%Y-%m")
+    y,m=map(int,month.split("-"))
+    start=date(y,m,1)
+    if m==12:
+        end=date(y+1,1,1)-timedelta(days=1)
+    else:
+        end=date(y,m+1,1)-timedelta(days=1)
+    return month,start,end
 
-def last_attendance_today(pid):
-    today=now_tr().date().isoformat()
-    return q("select * from attendance_logs where person_id=%s and substring(event_time,1,10)=%s order by id desc limit 1",(pid,today),fetch=True,one=True)
+def workdays_in_month(month=None):
+    month,start,end=month_bounds(month)
+    days=[]; d=start
+    while d<=end:
+        # Pazar hariç. İstersen bunu sonra değiştiririz.
+        if d.weekday()!=6:
+            days.append(d.isoformat())
+        d+=timedelta(days=1)
+    return days
 
-def seconds_since(ts):
-    try:
-        last=datetime.strptime(ts,"%Y-%m-%d %H:%M:%S").replace(tzinfo=TR_TZ)
-        return (now_tr()-last).total_seconds()
-    except Exception:
-        return 999999
-
-def save_auto_attendance(pid):
-    t=now_str()
-    last=last_attendance_today(pid)
-    if last and seconds_since(last["event_time"]) < DOUBLE_SCAN_SECONDS:
-        return {"status":"blocked","message":"Çift okutma engellendi. 10 saniye içinde tekrar kayıt alınmaz.","person_id":pid,"last_time":last["event_time"]}, 429
-    event_type="entry" if (not last or last["event_type"]=="exit") else "exit"
-    q("insert into attendance_logs(person_id,event_type,event_time) values(%s,%s,%s)",(pid,event_type,t))
-    p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
-    w=shift_warning(pid,event_type,t)
-    return {"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":event_type,"person_id":int(pid),"event_time":t,"warning":w}, 200
+def monthly_puantaj_rows(month=None):
+    month, start, end = month_bounds(month)
+    workdays=workdays_in_month(month)
+    people=q("select * from personnel where active=1 order by full_name", fetch=True)
+    rows=[]
+    for p in people:
+        entries=q("select distinct substring(event_time,1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(event_time,1,7)=%s", (p['id'], month), fetch=True)
+        came=set(r['d'] for r in entries)
+        leaves=q("select start_date,end_date from leaves where person_id=%s and status='İzinli'", (p['id'],), fetch=True)
+        leave_days=set()
+        for lv in leaves:
+            try:
+                ds=datetime.strptime(lv['start_date'],'%Y-%m-%d').date(); de=datetime.strptime(lv['end_date'],'%Y-%m-%d').date()
+                d=ds
+                while d<=de:
+                    if d.strftime('%Y-%m')==month and d.weekday()!=6:
+                        leave_days.add(d.isoformat())
+                    d+=timedelta(days=1)
+            except Exception:
+                pass
+        absent=[d for d in workdays if d not in came and d not in leave_days]
+        salary=float(p.get('salary') or 0)
+        daily=salary/len(workdays) if workdays else 0
+        deduction=daily*len(absent)
+        rows.append({
+            'id':p['id'],'full_name':p['full_name'],'department':p['department'],
+            'shift_name':p.get('shift_name') or 'Sabah','shift_start':p.get('shift_start') or ENTRY_LIMIT[:5],'shift_end':p.get('shift_end') or EXIT_LIMIT[:5],
+            'workdays':len(workdays),'came_days':len(came),'leave_days':len(leave_days),'absent_days':len(absent),
+            'absent_list':', '.join(absent) if absent else '-', 'salary':salary,'daily':daily,'deduction':deduction,'net_salary':salary-deduction
+        })
+    return rows
 
 def person_summary(pid):
     p=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id where p.id=%s group by p.id",(pid,),fetch=True,one=True)
@@ -155,7 +150,7 @@ def today_status_rows():
         if not log: out.append({"id":p["id"],"full_name":p["full_name"],"department":p["department"],"status":"bekleniyor","last_time":"","warning":""})
         else:
             st="işte" if log["event_type"]=="entry" else "çıkış yaptı"
-            out.append({"id":p["id"],"full_name":p["full_name"],"department":p["department"],"status":st,"last_time":log["event_time"],"warning":shift_warning(p["id"],log["event_type"],log["event_time"])})
+            out.append({"id":p["id"],"full_name":p["full_name"],"department":p["department"],"status":st,"last_time":log["event_time"],"warning":warning_for(log["event_type"],log["event_time"])})
     return out
 
 def report_rows():
@@ -213,29 +208,6 @@ def delete_person(pid):
     if not admin(): return redirect("/admin/login")
     q("delete from personnel where id=%s",(pid,)); flash("Personel silindi."); return redirect("/admin/personnel")
 
-@app.route("/admin/shifts",methods=["GET","POST"])
-def shifts_page():
-    if not admin(): return redirect("/admin/login")
-    if request.method=="POST":
-        action=request.form.get("action")
-        if action=="add":
-            q("insert into shifts(name,start_time,end_time,late_after_minutes,active) values(%s,%s,%s,%s,1)",(request.form["name"],request.form["start_time"],request.form["end_time"],int(request.form.get("late_after_minutes",10))))
-            flash("Vardiya eklendi.")
-        elif action=="assign":
-            q("update personnel set shift_id=%s where id=%s",(int(request.form["shift_id"]),int(request.form["person_id"])))
-            flash("Vardiya atandı.")
-    shifts=q("select * from shifts order by id",fetch=True)
-    people=q("select p.*,s.name shift_name from personnel p left join shifts s on s.id=p.shift_id order by p.full_name",fetch=True)
-    return render_template("shifts.html",title="Vardiyalar",shifts=shifts,people=people)
-
-@app.route("/admin/salary-paid",methods=["POST"])
-def salary_paid():
-    if not admin(): return redirect("/admin/login")
-    pid=int(request.form["person_id"]); amount=float(request.form.get("amount") or 0); note=request.form.get("note") or "Maaş yatırıldı"
-    q("insert into salary_payments(person_id,amount,note,created_at) values(%s,%s,%s,%s)",(pid,amount,note,now_str()))
-    notify("Maaş yatırıldı",note,pid); flash("Maaş yatırıldı bildirimi gönderildi.")
-    return redirect("/admin/salary")
-
 @app.route("/admin/advances",methods=["GET","POST"])
 def advances():
     if not admin(): return redirect("/admin/login")
@@ -280,48 +252,70 @@ def approve_leave_request(rid):
 def salary():
     if not admin(): return redirect("/admin/login")
     rows=q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id group by p.id order by full_name",fetch=True); trs=""
-    opts=""
     for r in rows:
-        s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); kalan=s-a; opts+=f"<option value='{r['id']}'>{r['full_name']} - {kalan:.2f} TL</option>"; trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} TL</td><td>{a:.2f} TL</td><td>{kalan:.2f} TL</td></tr>"
-    body=f"<div class='card'><h2>Maaş yatırıldı bildirimi</h2><form method='post' action='/admin/salary-paid' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Tutar</label><input name='amount' type='number' step='0.01' placeholder='Örn: 25000'></div><div class='field'><label>Bildirim Mesajı</label><input name='note' value='Maaşınız yatırılmıştır.'></div><button class='btn btn-green'>Bildirim Gönder</button></form></div><div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th></tr>{trs}</table></div>"
-    return render_template("table.html",title="Maaşlar",subtitle="Maaş özeti ve maaş yatırıldı bildirimi.",body=body)
+        s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); trs+=f"<tr><td>{r['full_name']}</td><td>{r['department']}</td><td>{s:.2f} TL</td><td>{a:.2f} TL</td><td>{s-a:.2f} TL</td></tr>"
+    return render_template("table.html",title="Maaşlar",subtitle="Maaş özeti.",body=f"<div class='card'><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Maaş</th><th>Avans</th><th>Kalan</th></tr>{trs}</table></div>")
 @app.route("/admin/attendance")
 def attendance():
     if not admin(): return redirect("/admin/login")
-    day=request.args.get("day") or now_tr().date().isoformat()
-    people=q("select p.*,s.name shift_name from personnel p left join shifts s on s.id=p.shift_id where p.active=1 order by p.full_name",fetch=True)
-    logs=q("select a.*,p.full_name from attendance_logs a join personnel p on p.id=a.person_id where substring(a.event_time,1,10)=%s order by a.person_id,a.id",(day,),fetch=True)
-    by={}
-    for r in logs: by.setdefault(r["person_id"],[]).append(r)
-    rows=[]
-    for p in people:
-        l=by.get(p["id"],[])
-        first_entry=next((x["event_time"] for x in l if x["event_type"]=="entry"),"")
-        last_exit=next((x["event_time"] for x in reversed(l) if x["event_type"]=="exit"),"")
-        warnings=[shift_warning(p["id"],x["event_type"],x["event_time"]) for x in l]
-        rows.append({"person":p,"logs":l,"first_entry":first_entry,"last_exit":last_exit,"came":bool(first_entry),"warnings":", ".join([w for w in warnings if w])})
-    return render_template("attendance_daily.html",title="Giriş Çıkış Dosyası",day=day,rows=rows)
+    selected=request.args.get("date") or date.today().isoformat()
+    rows=q("select a.*,p.full_name from attendance_logs a join personnel p on p.id=a.person_id where substring(a.event_time,1,10)=%s order by p.full_name,a.id desc",(selected,),fetch=True)
+    people=q("select * from personnel where active=1 order by full_name",fetch=True)
+    came_ids=set([r["person_id"] for r in rows if r["event_type"]=="entry"])
+    missing=[p for p in people if p["id"] not in came_ids]
+    trs="".join([f"<tr><td>{r['full_name']}</td><td>{'Giriş' if r['event_type']=='entry' else 'Çıkış'}</td><td>{r['event_time']}</td><td>{warning_for(r['event_type'],r['event_time']) or '-'}</td></tr>" for r in rows])
+    miss="".join([f"<span class='badge red'>{p['full_name']}</span> " for p in missing]) or "<span class='badge green'>Eksik yok</span>"
+    body=f"""<div class='card'><form method='get' class='form-grid'><div class='field'><label>Tarih Seç</label><input type='date' name='date' value='{selected}'></div><div class='field'><label>&nbsp;</label><button class='btn'>Listele</button> <a class='btn btn-green' href='/admin/attendance/csv?date={selected}'>CSV İndir</a></div></form></div><div class='card'><h2>{selected} Gelmeyen Personeller</h2><div>{miss}</div></div><div class='card'><h2>{selected} Giriş Çıkış Kayıtları</h2><table class='table'><tr><th>Personel</th><th>Tip</th><th>Zaman</th><th>Uyarı</th></tr>{trs}</table></div>"""
+    return render_template("table.html",title="Giriş Çıkış",subtitle="Tarih seçerek personelin gelip gelmediğini net görebilirsin.",body=body)
 
-@app.route("/admin/attendance/export")
-def attendance_export():
+@app.route("/admin/attendance/csv")
+def attendance_csv():
     if not admin(): return redirect("/admin/login")
-    day=request.args.get("day") or now_tr().date().isoformat()
-    people=q("select p.*,s.name shift_name from personnel p left join shifts s on s.id=p.shift_id where p.active=1 order by p.full_name",fetch=True)
-    logs=q("select * from attendance_logs where substring(event_time,1,10)=%s order by person_id,id",(day,),fetch=True)
-    by={}
-    for r in logs: by.setdefault(r["person_id"],[]).append(r)
-    buf=BytesIO(); buf.write('﻿'.encode('utf-8'))
-    text=[]; text.append(["Tarih","Personel","Bölüm","Vardiya","Geldi mi","İlk Giriş","Son Çıkış","Uyarı","Kayıtlar"])
-    for p in people:
-        l=by.get(p["id"],[])
-        first_entry=next((x["event_time"] for x in l if x["event_type"]=="entry"),"")
-        last_exit=next((x["event_time"] for x in reversed(l) if x["event_type"]=="exit"),"")
-        warnings=[shift_warning(p["id"],x["event_type"],x["event_time"]) for x in l]
-        kayit=" | ".join([("Giriş" if x["event_type"]=="entry" else "Çıkış")+" "+x["event_time"] for x in l])
-        text.append([day,p["full_name"],p["department"],p.get("shift_name") or "-","Geldi" if first_entry else "Gelmedi",first_entry,last_exit,", ".join([w for w in warnings if w]),kayit])
-    import io
-    sio=io.StringIO(); writer=csv.writer(sio,delimiter=';'); writer.writerows(text); data=sio.getvalue().encode('utf-8-sig')
-    return Response(data,mimetype="text/csv; charset=utf-8",headers={"Content-Disposition":f"attachment; filename=giris_cikis_{day}.csv"})
+    selected=request.args.get("date") or date.today().isoformat()
+    rows=q("select a.*,p.full_name,p.department from attendance_logs a join personnel p on p.id=a.person_id where substring(a.event_time,1,10)=%s order by p.full_name,a.id",(selected,),fetch=True)
+    lines=["Tarih,Personel,Bolum,Tip,Saat,Uyari"]
+    for r in rows:
+        lines.append(f"{selected},{r['full_name']},{r['department']},{'Giris' if r['event_type']=='entry' else 'Cikis'},{r['event_time']},{warning_for(r['event_type'],r['event_time']) or ''}")
+    return Response("\n".join(lines),mimetype="text/csv",headers={"Content-Disposition":f"attachment; filename=giris_cikis_{selected}.csv"})
+
+@app.route("/admin/shifts",methods=["GET","POST"])
+def shifts():
+    if not admin(): return redirect("/admin/login")
+    if request.method=="POST":
+        pid=int(request.form["person_id"]); name=request.form.get("shift_name") or "Özel"; st=request.form.get("shift_start") or "09:00"; en=request.form.get("shift_end") or "18:00"
+        q("update personnel set shift_name=%s,shift_start=%s,shift_end=%s where id=%s",(name,st,en,pid)); flash("Vardiya güncellendi.")
+    people=q("select * from personnel where active=1 order by full_name",fetch=True)
+    opts="".join([f"<option value='{p['id']}'>{p['full_name']}</option>" for p in people])
+    cards="".join([f"<div class='shift-card'><div><b>{p['full_name']}</b><span>{p['department']}</span></div><div class='shift-time'>{p.get('shift_name') or 'Sabah'} · {p.get('shift_start') or '09:00'} - {p.get('shift_end') or '18:00'}</div></div>" for p in people])
+    body=f"""<div class='card'><h2>Vardiya Ata</h2><form method='post' class='form-grid'><div class='field'><label>Personel</label><select name='person_id'>{opts}</select></div><div class='field'><label>Vardiya Adı</label><select name='shift_name'><option>Sabah</option><option>Akşam</option><option>Gece</option><option>Özel</option></select></div><div class='field'><label>Başlangıç</label><input type='time' name='shift_start' value='09:00'></div><div class='field'><label>Bitiş</label><input type='time' name='shift_end' value='18:00'></div><button class='btn btn-green'>Kaydet</button></form></div><div class='card'><h2>Vardiya Listesi</h2><div class='shift-grid'>{cards}</div></div>"""
+    return render_template("table.html",title="Vardiyalar",subtitle="Tarihler ve saatler kart şeklinde net görünür.",body=body)
+
+@app.route("/admin/monthly-puantaj")
+def monthly_puantaj():
+    if not admin(): return redirect("/admin/login")
+    month=request.args.get("month") or datetime.now().strftime("%Y-%m")
+    rows=monthly_puantaj_rows(month)
+    trs=""
+    for r in rows:
+        trs += "<tr><td>{full_name}</td><td>{department}</td><td>{shift_name}<br><small>{shift_start} - {shift_end}</small></td><td>{workdays}</td><td>{came_days}</td><td>{leave_days}</td><td><b>{absent_days}</b><br><small>{absent_list}</small></td><td>{deduction:.2f} TL</td><td>{net_salary:.2f} TL</td><td><a class='btn btn-orange' href='/admin/payroll/{id}?month={month}'>Bordro</a></td></tr>".format(month=month, **r)
+    body=f"""<div class='card'><form method='get' class='form-grid'><div class='field'><label>Ay Seç</label><input type='month' name='month' value='{month}'></div><div class='field'><label>&nbsp;</label><button class='btn'>Puantajı Göster</button></div></form></div><div class='card'><h2>{month} Ay Sonu Puantaj</h2><table class='table'><tr><th>Personel</th><th>Bölüm</th><th>Vardiya</th><th>İş Günü</th><th>Geldi</th><th>İzin</th><th>Gelmediği Gün</th><th>Kesinti</th><th>Net Maaş</th><th>Bordro</th></tr>{trs}</table></div>"""
+    return render_template("table.html",title="Ay Sonu Puantaj",subtitle="Gelmediği günler otomatik hesaplanır; sağdaki Bordro butonu kişiye özel dosya indirir.",body=body)
+
+@app.route("/admin/payroll/<int:pid>")
+def payroll_pdf(pid):
+    if not admin(): return redirect("/admin/login")
+    month=request.args.get("month") or datetime.now().strftime("%Y-%m")
+    rows=monthly_puantaj_rows(month)
+    r=next((x for x in rows if x['id']==pid),None)
+    if not r: return redirect("/admin/monthly-puantaj")
+    buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=A4,rightMargin=32,leftMargin=32,topMargin=32,bottomMargin=32)
+    styles=getSampleStyleSheet(); story=[Paragraph("Personel Bordro",styles["Title"]),Paragraph(f"Ay: {month}",styles["Heading2"]),Spacer(1,12)]
+    data=[["Personel",r['full_name']],["Bölüm",r['department']],["Vardiya",f"{r['shift_name']} {r['shift_start']} - {r['shift_end']}"],["İş Günü",str(r['workdays'])],["Geldiği Gün",str(r['came_days'])],["İzinli Gün",str(r['leave_days'])],["Gelmediği Gün",str(r['absent_days'])],["Gelmediği Tarihler",r['absent_list']],["Aylık Maaş",f"{r['salary']:.2f} TL"],["Günlük Kesinti",f"{r['daily']:.2f} TL"],["Toplam Kesinti",f"{r['deduction']:.2f} TL"],["Net Maaş",f"{r['net_salary']:.2f} TL"]]
+    table=Table(data,colWidths=[130,330]); table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#1e293b")),("TEXTCOLOR",(0,0),(0,-1),colors.white),("GRID",(0,0),(-1,-1),0.5,colors.grey),("FONTNAME",(0,0),(0,-1),"Helvetica-Bold")]))
+    story.append(table); doc.build(story); pdf=buf.getvalue(); buf.close()
+    safe=r['full_name'].replace(' ','_')
+    return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":f"attachment; filename=bordro_{safe}_{month}.pdf"})
+
 @app.route("/admin/notifications")
 def notifications_page():
     if not admin(): return redirect("/admin/login")
@@ -339,13 +333,13 @@ def reports():
 def reports_pdf():
     if not admin(): return redirect("/admin/login")
     rows=report_rows(); buf=BytesIO(); doc=SimpleDocTemplate(buf,pagesize=landscape(A4),rightMargin=24,leftMargin=24,topMargin=24,bottomMargin=24)
-    styles=getSampleStyleSheet(); story=[Paragraph("Personel Sistemi",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now().strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
+    styles=getSampleStyleSheet(); story=[Paragraph("BOZTEK",styles["Title"]),Paragraph("Aylik Personel Raporu",styles["Heading2"]),Paragraph(datetime.now().strftime("Tarih/Saat: %Y-%m-%d %H:%M"),styles["Normal"]),Spacer(1,12)]
     data=[["Personel","Bolum","Calisma","Gec","Erken","Avans TL","Kalan Maas TL"]]
     for r in rows:
         s=float(r["salary"] or 0); a=float(r["total_advance"] or 0); data.append([str(r["full_name"]),str(r["department"]),str(r["monthly_days"]),str(r["late_entries"]),str(r["early_exits"]),f"{a:.2f}",f"{s-a:.2f}"])
     table=Table(data,repeatRows=1); table.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#1e293b")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.5,colors.grey),("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#eef2f7")])]))
     story.append(table); doc.build(story); pdf=buf.getvalue(); buf.close()
-    return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=personel_aylik_rapor.pdf"})
+    return Response(pdf,mimetype="application/pdf",headers={"Content-Disposition":"attachment; filename=boztek_aylik_rapor.pdf"})
 
 @app.route("/api/health")
 def health(): q("select 1",fetch=True,one=True); return jsonify({"status":"ok","database":"connected","mode":"qr-entry"})
@@ -360,30 +354,14 @@ def api_entry():
     if not pid: return jsonify({"status":"error","message":"person_id eksik"}),400
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'entry',%s)",(pid,t))
     p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
-    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"entry","person_id":int(pid),"event_time":t,"warning":shift_warning(int(pid),"entry",t)})
+    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"entry","person_id":int(pid),"event_time":t,"warning":warning_for("entry",t)})
 @app.route("/api/exit",methods=["GET","POST"])
 def api_exit():
     pid=val("person_id"); t=now_str()
     if not pid: return jsonify({"status":"error","message":"person_id eksik"}),400
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'exit',%s)",(pid,t))
     p=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
-    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"exit","person_id":int(pid),"event_time":t,"warning":shift_warning(int(pid),"exit",t)})
-
-@app.route("/api/single-qr")
-def api_single_qr():
-    return jsonify({"status":"ok","qr_code":SINGLE_QR_CODE,"message":"Tek QR kodu"})
-
-@app.route("/api/qr/verify",methods=["GET","POST"])
-def api_qr_verify():
-    token=val("token") or request.headers.get("Authorization","").replace("Bearer ","")
-    code=val("qr") or val("code") or val("data") or SINGLE_QR_CODE
-    if not token: return jsonify({"status":"error","message":"Personel girişi gerekli. Uygulamadan giriş yapıp tek QR okutun."}),401
-    if code not in (SINGLE_QR_CODE,"PERSONEL_SYSTEM_ENTRY","PERSONEL_SISTEMI_GIRIS"):
-        return jsonify({"status":"error","message":"QR kod eksik veya bozuk"}),400
-    p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
-    if not p: return jsonify({"status":"error","message":"Geçersiz personel oturumu"}),401
-    data,status=save_auto_attendance(int(p["id"]))
-    return jsonify(data),status
+    return jsonify({"status":"ok","full_name":p["full_name"] if p else "Personel","event_type":"exit","person_id":int(pid),"event_time":t,"warning":warning_for("exit",t)})
 @app.route("/api/today-status")
 def api_today_status(): return jsonify(today_status_rows())
 @app.route("/api/attendance")
@@ -430,10 +408,6 @@ def employee_leave_request():
     q("insert into leave_requests(person_id,start_date,end_date,days_count,note,status,created_at) values(%s,%s,%s,%s,%s,'Beklemede',%s)",(p["id"],start,end,count,note,now_str()))
     notify("Yeni izin talebi",f"{p['full_name']} {count} günlük izin talebi gönderdi.",p["id"])
     return jsonify({"status":"ok","message":"İzin talebi gönderildi","days_count":count})
-@app.route("/api/server-time")
-def api_server_time():
-    return jsonify({"status":"ok","time":now_str(),"timezone":"Europe/Istanbul"})
-
 @app.route("/api/employee-notifications",methods=["GET","POST"])
 def employee_notifications():
     token=val("token"); p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
