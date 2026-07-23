@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#071426">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Personel">
+  <title>Personel Sistemi</title>
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/static/pwa/icon-192.png">
+  <link rel="stylesheet" href="/static/pwa/personel.css">
+</head>
+<body>
+  <div class="bg-orb one"></div><div class="bg-orb two"></div>
+  <main class="app-shell">
+    <section id="loginView" class="auth-card glass">
+      <img src="/static/pwa/logo.png" class="logo" alt="Logo">
+      <h1>Personel Sistemi</h1>
+      <p class="muted">Güvenli personel girişi</p>
+      <form id="loginForm">
+        <label>Kullanıcı adı<input id="username" autocomplete="username" required></label>
+        <label>Şifre<input id="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">Giriş Yap</button>
+      </form>
+      <div id="loginMsg" class="msg"></div>
+    </section>
+
+    <section id="appView" class="hidden">
+      <header class="topbar glass">
+        <div class="brand"><img src="/static/pwa/logo.png" alt=""><div><strong>Personel Sistemi</strong><span id="clock">--:--</span></div></div>
+        <button id="logoutBtn" class="ghost">Çıkış</button>
+      </header>
+
+      <section id="home" class="page active">
+        <div class="profile-card glass">
+          <img id="avatar" src="/static/pwa/avatar.png" alt="Profil">
+          <div><h2 id="fullName">Personel</h2><p id="department">-</p><span id="shiftBadge" class="badge">Vardiya</span></div>
+        </div>
+        <div class="stat-grid">
+          <article class="glass stat"><span>Kalan İzin</span><strong id="leaveRemaining">0</strong></article>
+          <article class="glass stat"><span>Maaş</span><strong id="salary">0 TL</strong></article>
+          <article class="glass stat"><span>Avans</span><strong id="advance">0 TL</strong></article>
+          <article class="glass stat"><span>Net</span><strong id="netSalary">0 TL</strong></article>
+        </div>
+        <button class="scan-hero" data-page="qr"><span>▣</span> Ortak QR Okut</button>
+      </section>
+
+      <section id="qr" class="page">
+        <div class="section-head"><h2>Ortak QR</h2><p>İş yerindeki tek QR kodunu okutun.</p></div>
+        <div class="glass scanner-card">
+          <video id="video" playsinline muted></video>
+          <canvas id="canvas" class="hidden"></canvas>
+          <div id="scanOverlay" class="scan-overlay"><div></div></div>
+          <button id="startScan" class="primary">Kamerayı Başlat</button>
+          <label class="file-btn">Fotoğraftan QR Oku<input id="qrFile" type="file" accept="image/*" capture="environment"></label>
+          <div id="qrMsg" class="msg"></div>
+        </div>
+      </section>
+
+      <section id="shift" class="page">
+        <div class="section-head"><h2>Vardiya Takvimim</h2><input id="shiftMonth" type="month"></div>
+        <div id="shiftList" class="calendar-grid"></div>
+      </section>
+
+      <section id="leave" class="page">
+        <div class="section-head"><h2>İzin Talebi</h2><p>Talebiniz yönetici onayına gönderilir.</p></div>
+        <form id="leaveForm" class="glass form-card">
+          <label>Başlangıç<input id="leaveStart" type="date" required></label>
+          <label>Bitiş<input id="leaveEnd" type="date" required></label>
+          <label>Not<textarea id="leaveNote" rows="3"></textarea></label>
+          <button class="primary">Talep Gönder</button>
+          <div id="leaveMsg" class="msg"></div>
+        </form>
+      </section>
+
+      <section id="notifications" class="page">
+        <div class="section-head"><h2>Bildirimler</h2><button id="refreshNotifications" class="ghost">Yenile</button></div>
+        <div id="notificationList" class="list"></div>
+      </section>
+
+      <section id="profile" class="page">
+        <div class="section-head"><h2>Profil Düzenle</h2></div>
+        <form id="profileForm" class="glass form-card">
+          <label>Fotoğraf URL<input id="photoUrl" type="url" placeholder="https://..."></label>
+          <label>Telefon<input id="phone" type="tel"></label>
+          <label>Adres<textarea id="address" rows="4"></textarea></label>
+          <button class="primary">Kaydet</button>
+          <div id="profileMsg" class="msg"></div>
+        </form>
+      </section>
+
+      <nav class="bottom-nav glass">
+        <button data-page="home" class="active">⌂<span>Ana Sayfa</span></button>
+        <button data-page="qr">▣<span>QR</span></button>
+        <button data-page="shift">▦<span>Vardiya</span></button>
+        <button data-page="notifications">◉<span>Bildirim</span></button>
+        <button data-page="profile">♙<span>Profil</span></button>
+      </nav>
+    </section>
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+  <script src="/static/pwa/personel.js"></script>
+</body>
+</html>

@@ -1,1 +1,62 @@
-{% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Aylık Plan</div><h1>Aylık Vardiya Listesi</h1><p>Tarihleri net görünür şekilde düzenle, PDF olarak çıktı al.</p></div></section><div class="card"><form method="get" class="form-grid compact"><div class="field"><label>Ay Seç</label><input type="month" name="month" value="{{month}}"></div><div class="field"><label>&nbsp;</label><button class="btn">Ayı Göster</button> <a class="btn secondary" href="/admin/shifts/pdf?month={{month}}">PDF İndir</a></div></form></div><div class="card"><h2>Vardiya Ata</h2><form method="post" class="form-grid"><input type="hidden" name="month" value="{{month}}"><div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}</option>{% endfor %}</select></div><div class="field"><label>Vardiya Adı</label><select name="shift_name"><option>Sabah</option><option>Akşam</option><option>Gece</option><option>Özel</option></select></div><div class="field"><label>Başlangıç</label><input type="time" name="shift_start" value="09:00"></div><div class="field"><label>Bitiş</label><input type="time" name="shift_end" value="18:00"></div><div class="field full"><label>Gün Seç</label><div class="day-grid">{% for d in days %}<label><input type="checkbox" name="days" value="{{d}}"> {{d[-2:]}}</label>{% endfor %}</div></div><label class="check"><input type="checkbox" name="apply_default" value="1"> Personelin genel vardiyası da bu olsun</label><button class="btn">Kaydet</button></form></div><div class="card"><div class="card-head"><h2>{{month}} Hazırlanan Liste</h2><span>{{custom_rows|length}} kayıt</span></div><div class="timeline">{% for r in custom_rows %}<div class="timeline-row"><b>{{r.day}}</b><span>{{r.full_name}}</span><em>{{r.shift_name}} · {{r.shift_start}} - {{r.shift_end}}</em></div>{% endfor %}{% if not custom_rows %}<p class="muted">Bu ay için özel vardiya girilmedi. Personellerin genel vardiyası kullanılır.</p>{% endif %}</div></div>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div><div class="eyebrow">Rotasyon Şablonu</div><h1>Aylık Vardiya Listesi</h1><p>Excel görünümünde aylık vardiya planı. A=Sabah, B=Akşam, C=Gece, X=İzin/Off.</p></div>
+  <div class="clock">{{month}}</div>
+</section>
+<div class="card">
+  <form method="get" class="form-grid compact">
+    <div class="field"><label>Ay Seç</label><input type="month" name="month" value="{{month}}"></div>
+    <div class="field"><label>&nbsp;</label><button class="btn">Ayı Göster</button> <a class="btn secondary" href="/admin/shifts/pdf?month={{month}}">PDF Çıktı Al</a></div>
+  </form>
+</div>
+<div class="shift-legend card">
+  <div class="legend-box a">A<br><span>Sabah<br>08:00-16:00</span></div>
+  <div class="legend-box b">B<br><span>Akşam<br>16:00-00:00</span></div>
+  <div class="legend-box c">C<br><span>Gece<br>00:00-08:00</span></div>
+  <div class="legend-box x">X<br><span>İzin / Off</span></div>
+</div>
+<div class="card">
+  <h2>Aylık Şablon Uygula</h2>
+  <form method="post" class="form-grid">
+    <input type="hidden" name="mode" value="pattern"><input type="hidden" name="month" value="{{month}}">
+    <div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}</option>{% endfor %}</select></div>
+    <div class="field"><label>Rotasyon Kodu</label><input name="pattern" placeholder="Örn: AAAXBBX veya AAAAAAX"></div>
+    <div class="field full"><button class="btn">Tüm Aya Uygula</button></div>
+  </form>
+</div>
+<div class="card">
+  <h2>Seçili Günlere Vardiya Ata</h2>
+  <form method="post" class="form-grid">
+    <input type="hidden" name="mode" value="days"><input type="hidden" name="month" value="{{month}}">
+    <div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}</option>{% endfor %}</select></div>
+    <div class="field"><label>Vardiya</label><select name="shift_name"><option>Sabah</option><option>Akşam</option><option>Gece</option><option>İzin</option><option>Özel</option></select></div>
+    <div class="field"><label>Başlangıç</label><input type="time" name="shift_start" value="08:00"></div>
+    <div class="field"><label>Bitiş</label><input type="time" name="shift_end" value="16:00"></div>
+    <div class="field full"><label>Günler</label><div class="day-grid">{% for d in days %}<label><input type="checkbox" name="days" value="{{d}}"> {{d[-2:]}}</label>{% endfor %}</div></div>
+    <label class="check"><input type="checkbox" name="apply_default" value="1"> Genel vardiya olarak da kaydet</label>
+    <button class="btn">Kaydet</button>
+  </form>
+</div>
+<div class="card shift-card">
+  <div class="card-head"><h2>{{month}} Rotasyon Tablosu</h2><a class="btn secondary" href="/admin/shifts/pdf?month={{month}}">PDF İndir</a></div>
+  <div class="rotation-wrap">
+    <table class="rotation-table">
+      <thead>
+        <tr><th class="person-col">Personel</th>{% for d in days %}<th><small>{{d[8:10]}}</small><br><span>{{d[5:7]}}</span></th>{% endfor %}</tr>
+        <tr class="count-row"><th>Sabah A</th>{% for d in days %}<td>{{totals.A[loop.index0] if totals.A is defined else 0}}</td>{% endfor %}</tr>
+        <tr class="count-row"><th>Akşam B</th>{% for d in days %}<td>{{totals.B[loop.index0] if totals.B is defined else 0}}</td>{% endfor %}</tr>
+        <tr class="count-row"><th>Gece C</th>{% for d in days %}<td>{{totals.C[loop.index0] if totals.C is defined else 0}}</td>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in matrix %}
+        <tr>
+          <th class="person-col">{{row.person.full_name}}<span>{{row.person.department}}</span></th>
+          {% for cell in row.cells %}<td class="s{{cell.code}}" title="{{cell.label}} {{cell.start}}-{{cell.end}}">{{cell.code}}</td>{% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
