@@ -1,24 +1,28 @@
-Premium Personel Server
+BOZTEK QR TEK OKUMA - KAMERA OTOMATİK KAPANIR
 
-Render Build Command:
-pip install -r requirements.txt
+Bu sürümde:
+- QR sadece bir kez okunur.
+- İlk okumada tarama kilitlenir.
+- Kamera pauseAndWait ile durdurulur.
+- Kamera ekranı finish() ile kapanır.
+- Ana ekrana dönüldükten sonra servera tek kayıt gönderilir.
+- Aynı QR art arda iki kez işlenmez.
 
-Render Start Command:
-gunicorn --workers 1 --threads 4 --timeout 120 app:app
+SERVER:
+https://adminpanel-wvpi.onrender.com
 
-Giriş:
-eren / 1234
-Eski giriş de çalışır: saban / 5109
+QR içeriği:
+1
+person_id=1
+https://site.com/?person_id=1
 
-Özellikler:
-- Premium koyu panel
-- Tek QR sistemi
-- 10 saniye çift okutma koruması
-- Aylık vardiya listesi
-- Vardiya PDF çıktısı
-- Ay sonu puantaj
-- Gelmediği gün maaş kesintisi
-- Bordro PDF
-- Türkçe karakter uyumlu PDF/CSV
-- Kartvizit personel paneli
-- Maaş yatırıldı bildirimi
+APK alma:
+1. ZIP'i çıkar.
+2. Projeyi Türkçe karakter olmayan klasöre koy:
+   C:\Android\BoztekQRTekOkuma
+3. Android Studio ile aç.
+4. Gradle JDK: Embedded JDK.
+5. Sync Now.
+6. Build > Build Bundle(s) / APK(s) > Build APK(s).
+
+Telefona kurmadan önce eski QR uygulamasını kaldır.

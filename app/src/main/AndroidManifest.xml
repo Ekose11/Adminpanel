@@ -2,19 +2,23 @@
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-permission android:name="android.permission.VIBRATE"/>
 
     <uses-feature
         android:name="android.hardware.camera"
-        android:required="false"/>
+        android:required="true"/>
 
     <application
         android:theme="@style/AppTheme"
-        android:label="Personel Sistemi"
+        android:label="Boztek QR Tek Okuma"
         android:usesCleartextTraffic="true"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
         android:supportsRtl="true">
+
+        <activity
+            android:name=".ScannerActivity"
+            android:screenOrientation="portrait"
+            android:exported="false"/>
 
         <activity
             android:name=".MainActivity"
