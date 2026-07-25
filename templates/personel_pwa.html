@@ -55,7 +55,7 @@
         <button class="action green" data-open-scanner="entry"><span>↳</span><b>QR Giriş</b><small>Tek okuma</small></button>
         <button class="action red" data-open-scanner="exit"><span>↰</span><b>QR Çıkış</b><small>Tek okuma</small></button>
         <button class="action blue" data-page="leavePage"><span>✎</span><b>İzin İsteği</b><small>Talep oluştur</small></button>
-        <button class="action orange" data-page="notificationsPage"><span>●</span><b>Bildirimler</b><small>Son gelişmeler</small></button>
+        <button class="action orange" data-page="notificationsPage"><span>●</span><b>Bildirimler <em id="personNotificationBadge" class="mini-badge hidden">0</em></b><small>Son gelişmeler</small></button>
       </div>
     </section>
 
@@ -88,7 +88,16 @@
     </section>
 
     <section id="advancesPage" class="page">
-      <div class="page-head"><button class="back" data-page="homePage">‹</button><div><p class="eyebrow">FİNANS</p><h2>Avanslar</h2></div></div>
+      <div class="page-head"><button class="back" data-page="homePage">‹</button><div><p class="eyebrow">FİNANS</p><h2>Avans Talebi</h2></div></div>
+      <article class="form-card">
+        <label>Talep edilen tutar<input id="advanceAmount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Örn. 5000"></label>
+        <label>Açıklama<textarea id="advanceNote" rows="3" placeholder="Avans talebi açıklaması"></textarea></label>
+        <button id="sendAdvanceBtn" class="btn primary">Avans Talebi Gönder</button>
+        <p id="advanceStatus" class="status"></p>
+      </article>
+      <h3 class="section-title">Talep Geçmişi</h3>
+      <div id="advanceRequestsList" class="list"><div class="empty">Talepler yükleniyor…</div></div>
+      <h3 class="section-title">Onaylanan Avanslar</h3>
       <div id="advancesList" class="list"><div class="empty">Avanslar yükleniyor…</div></div>
     </section>
 

@@ -1,0 +1,31 @@
+BOZTEK PERSONEL SİSTEMİ - BİLDİRİM VE AVANS GÜNCELLEMESİ
+
+Bu paket mevcut Adminpanel projesinin güncellenmiş tam halidir.
+Eski projenin üzerine tek tek dosya eklemeyin. GitHub deposundaki dosyaları bu pakettekilerle değiştirin.
+
+KURULUM
+1) ZIP dosyasını bilgisayarda çıkarın.
+2) GitHub'daki Adminpanel deposuna girin.
+3) Bu klasörün İÇİNDEKİ tüm dosyaları depoya yükleyin.
+4) Sorulduğunda aynı adlı dosyaların değiştirilmesini onaylayın.
+5) Commit changes düğmesine basın.
+6) Render otomatik dağıtım yapacaktır. Yapmazsa Manual Deploy > Deploy latest commit seçin.
+
+VERİTABANI
+- Neon DATABASE_URL aynı kaldığı için personel ve eski kayıtlar silinmez.
+- İlk açılışta advance_requests tablosu ve bildirim alanları otomatik oluşturulur.
+
+EKLENENLER
+- İzin Talepleri kırmızı sayaç ve yönetici sesi
+- İzin onay/red sonucu personele sesli bildirim
+- Personel tarafında Avans Talebi formu ve geçmişi
+- Yönetici tarafında Avans Talepleri onay/red menüsü
+- Onaylanan avansın avans geçmişine otomatik eklenmesi
+- 5 saniyelik canlı kontrol (sayfa yenilemeden)
+- Yönetici ve personel bildirim merkezi
+- Okundu/okunmadı görünümü
+- 30 gün sonra otomatik arşivleme
+- Vardiya menüsü yönetici menüsünden kaldırıldı
+
+NOT
+Telefon bildirim izni ilk kullanımda onaylanmalıdır. Ses ve bildirimler PWA açıkken veya tarayıcı arka planda çalışırken gelir. Tamamen kapalı uygulamada bildirim için ayrıca harici push servisi gerekir.

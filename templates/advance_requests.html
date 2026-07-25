@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block content %}
+<section class="hero"><div><div class="eyebrow">Personel Talepleri</div><h1>Avans Talepleri</h1><p>Personelden gelen talepleri onaylayın veya reddedin.</p></div></section>
+<div class="card"><table class="table"><tr><th>Personel</th><th>Tutar</th><th>Açıklama</th><th>Tarih</th><th>Durum</th><th>İşlem</th></tr>
+{% for r in rows %}<tr class="{% if r.status=='Beklemede' %}unread-row{% endif %}"><td>{{r.full_name}}</td><td>{{'%.2f'|format(r.amount|float)}} TL</td><td>{{r.note or '-'}}</td><td>{{r.created_at}}</td><td><span class="status-badge {{r.status|lower}}">{{r.status}}</span></td><td>{% if r.status=='Beklemede' %}<a class="btn small" href="/admin/advance-requests/{{r.id}}/approve">Onayla</a> <a class="btn small danger" href="/admin/advance-requests/{{r.id}}/reject">Reddet</a>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="6">Avans talebi bulunmuyor.</td></tr>{% endfor %}</table></div>
+{% endblock %}

@@ -15,13 +15,13 @@
       <a href="/admin/personnel-cards">💼 Kartvizitler</a>
       <a href="/admin/qr-cards">🔳 Tek QR</a>
       <a href="/admin/attendance">🟢 Giriş Çıkış</a>
-      <a href="/admin/shifts">🕒 Aylık Vardiya</a>
-      <a href="/admin/monthly-puantaj">📋 Ay Sonu Puantaj</a>
+            <a href="/admin/monthly-puantaj">📋 Ay Sonu Puantaj</a>
       <a href="/admin/leaves">📅 İzinler</a>
-      <a href="/admin/leave-requests">📝 İzin Talepleri</a>
+      <a href="/admin/leave-requests">📝 İzin Talepleri {% if leave_badge %}<span id="leaveBadge" class="nav-badge">{{leave_badge}}</span>{% endif %}</a>
+      <a href="/admin/advance-requests">💳 Avans Talepleri {% if advance_badge %}<span id="advanceBadge" class="nav-badge">{{advance_badge}}</span>{% endif %}</a>
       <a href="/admin/advances">💸 Avanslar</a>
       <a href="/admin/salary">💰 Maaşlar</a>
-      <a href="/admin/notifications">🔔 Bildirimler</a>
+      <a href="/admin/notifications">🔔 Bildirimler {% if notification_badge %}<span id="notificationBadge" class="nav-badge">{{notification_badge}}</span>{% endif %}</a>
       <a href="/admin/reports">📄 Aylık Rapor</a>
       <a href="/admin/logout">🚪 Çıkış</a>
     </nav>
@@ -31,4 +31,13 @@
     {% block content %}{% endblock %}
   </main>
 </div>
-</body></html>
+<audio id="adminNotifySound" preload="auto"><source src="data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgA==" type="audio/wav"></audio>
+<script>
+(function(){
+ let lastId=Number(localStorage.getItem('admin_last_notification_id')||0);
+ let first=true;
+ function badge(id,n){let el=document.getElementById(id); if(n>0){if(!el){el=document.createElement('span');el.id=id;el.className='nav-badge'; const map={leaveBadge:'/admin/leave-requests',advanceBadge:'/admin/advance-requests',notificationBadge:'/admin/notifications'}; const a=document.querySelector('a[href="'+map[id]+'"]');if(a)a.appendChild(el)} if(el)el.textContent=n}else if(el)el.remove()}
+ async function poll(){try{const r=await fetch('/api/admin/live-status',{cache:'no-store'});if(!r.ok)return;const d=await r.json();badge('leaveBadge',d.leave_count);badge('advanceBadge',d.advance_count);badge('notificationBadge',d.notification_count);if(d.latest&&d.latest.id>lastId){if(!first){try{const C=window.AudioContext||window.webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=920;g.gain.setValueAtTime(.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.35);o.start();o.stop(c.currentTime+.35)}}catch(e){} if('Notification'in window&&Notification.permission==='granted')new Notification(d.latest.event_type,{body:d.latest.message});}lastId=d.latest.id;localStorage.setItem('admin_last_notification_id',lastId)}}catch(e){}first=false}
+ document.addEventListener('click',()=>{if('Notification'in window&&Notification.permission==='default')Notification.requestPermission()},{once:true});poll();setInterval(poll,5000);
+})();
+</script></body></html>

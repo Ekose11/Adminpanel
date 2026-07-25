@@ -108,7 +108,10 @@ def init_db():
     q("create table if not exists leaves(id serial primary key, person_id integer references personnel(id) on delete cascade, start_date text not null, end_date text not null, days_count integer default 0, status text default 'İzinli')")
     q("create table if not exists attendance_logs(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, start_date text not null, end_date text not null, days_count integer default 0, note text default '', status text default 'Beklemede', created_at text not null)")
-    q("create table if not exists notifications(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, message text not null, created_at text not null, is_read integer default 0)")
+    q("create table if not exists notifications(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, message text not null, created_at text not null, is_read integer default 0, audience text default 'personel', archived integer default 0)")
+    safe_alter("alter table notifications add column audience text default 'personel'")
+    safe_alter("alter table notifications add column archived integer default 0")
+    q("create table if not exists advance_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, note text default '', status text default 'Beklemede', created_at text not null, decided_at text default '')")
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
     q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, month text not null, note text default '', created_at text not null)")
     READY = True
@@ -142,21 +145,33 @@ def now_str():
 def today_str():
     return now_dt().date().isoformat()
 
-def notify(event_type, message, person_id=None):
-    q("insert into notifications(person_id,event_type,message,created_at,is_read) values(%s,%s,%s,%s,0)", (person_id, event_type, message, now_str()))
+def notify(event_type, message, person_id=None, audience='personel'):
+    q("insert into notifications(person_id,event_type,message,created_at,is_read,audience,archived) values(%s,%s,%s,%s,0,%s,0)", (person_id, event_type, message, now_str(), audience))
 
 def clear_old_notifications():
-    # Bildirimler günlük temiz görünür; eski gün bildirimleri otomatik silinir.
-    # Performans için aynı gün içinde sadece bir kez çalışır.
+    # 30 günden eski bildirimleri silmek yerine arşivler.
     global LAST_NOTIFICATION_CLEANUP_DATE
     today = today_str()
     if LAST_NOTIFICATION_CLEANUP_DATE == today:
         return
     try:
-        q("delete from notifications where substring(created_at,1,10)<>%s", (today,))
+        cutoff = (now_dt() - timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
+        q("update notifications set archived=1 where created_at<%s", (cutoff,))
         LAST_NOTIFICATION_CLEANUP_DATE = today
     except Exception:
         pass
+
+@app.context_processor
+def inject_badges():
+    if not admin_ok():
+        return {}
+    try:
+        leave_count = q("select count(*) c from leave_requests where status='Beklemede'", fetch=True, one=True)["c"]
+        advance_count = q("select count(*) c from advance_requests where status='Beklemede'", fetch=True, one=True)["c"]
+        notification_count = q("select count(*) c from notifications where audience='admin' and is_read=0 and archived=0", fetch=True, one=True)["c"]
+        return {'leave_badge': leave_count, 'advance_badge': advance_count, 'notification_badge': notification_count}
+    except Exception:
+        return {'leave_badge': 0, 'advance_badge': 0, 'notification_badge': 0}
 
 def days_between(start, end):
     s = datetime.strptime(start, "%Y-%m-%d").date()
@@ -510,10 +525,67 @@ def approve_leave_request(rid):
         flash("Yetersiz izin."); return redirect("/admin/leave-requests")
     q("insert into leaves(person_id,start_date,end_date,days_count,status) values(%s,%s,%s,%s,'İzinli')", (req["person_id"], req["start_date"], req["end_date"], req["days_count"]))
     q("update personnel set annual_leave_used=annual_leave_used+%s, annual_leave_remaining=annual_leave_remaining-%s where id=%s", (req["days_count"], req["days_count"], req["person_id"]))
-    q("delete from leave_requests where id=%s", (rid,))
-    notify("İzin onaylandı", f"{req['days_count']} günlük izin talebin onaylandı.", req["person_id"])
+    q("update leave_requests set status='Onaylandı' where id=%s", (rid,))
+    notify("İzin onaylandı", f"{req['days_count']} günlük izin talebiniz onaylandı.", req["person_id"], 'personel')
     flash("İzin onaylandı.")
     return redirect("/admin/leave-requests")
+
+
+@app.route("/admin/leave-requests/<int:rid>/reject", methods=["POST", "GET"])
+def reject_leave_request(rid):
+    guard = admin_required()
+    if guard: return guard
+    req = q("select lr.*,p.full_name from leave_requests lr join personnel p on p.id=lr.person_id where lr.id=%s", (rid,), fetch=True, one=True)
+    if not req:
+        flash("Talep bulunamadı."); return redirect("/admin/leave-requests")
+    q("update leave_requests set status='Reddedildi' where id=%s", (rid,))
+    notify("İzin reddedildi", f"{req['start_date']} - {req['end_date']} tarihli izin talebiniz reddedildi.", req["person_id"], 'personel')
+    flash("İzin talebi reddedildi.")
+    return redirect("/admin/leave-requests")
+
+
+@app.route("/admin/advance-requests")
+def advance_requests_page():
+    guard = admin_required()
+    if guard: return guard
+    rows = q("select ar.*,p.full_name from advance_requests ar join personnel p on p.id=ar.person_id order by case when ar.status='Beklemede' then 0 else 1 end, ar.id desc limit 300", fetch=True)
+    return render_template("advance_requests.html", title="Avans Talepleri", rows=rows)
+
+@app.route("/admin/advance-requests/<int:rid>/<decision>", methods=["POST", "GET"])
+def decide_advance_request(rid, decision):
+    guard = admin_required()
+    if guard: return guard
+    req = q("select ar.*,p.full_name from advance_requests ar join personnel p on p.id=ar.person_id where ar.id=%s", (rid,), fetch=True, one=True)
+    if not req or req['status'] != 'Beklemede':
+        flash("Talep bulunamadı veya daha önce sonuçlandı."); return redirect("/admin/advance-requests")
+    if decision == 'approve':
+        q("update advance_requests set status='Onaylandı',decided_at=%s where id=%s", (now_str(), rid))
+        q("insert into advances(person_id,amount,note,status) values(%s,%s,%s,'Onaylandı')", (req['person_id'], req['amount'], req.get('note') or 'Personel avans talebi'))
+        notify("Avans onaylandı", f"{float(req['amount']):.2f} TL avans talebiniz onaylandı.", req['person_id'], 'personel')
+        flash("Avans talebi onaylandı ve avans geçmişine eklendi.")
+    else:
+        q("update advance_requests set status='Reddedildi',decided_at=%s where id=%s", (now_str(), rid))
+        notify("Avans reddedildi", f"{float(req['amount']):.2f} TL avans talebiniz reddedildi.", req['person_id'], 'personel')
+        flash("Avans talebi reddedildi.")
+    return redirect("/admin/advance-requests")
+
+@app.route("/api/admin/live-status")
+def admin_live_status():
+    guard = admin_required()
+    if guard: return jsonify({'status':'unauthorized'}), 401
+    leave_count = q("select count(*) c from leave_requests where status='Beklemede'", fetch=True, one=True)['c']
+    advance_count = q("select count(*) c from advance_requests where status='Beklemede'", fetch=True, one=True)['c']
+    notification_count = q("select count(*) c from notifications where audience='admin' and is_read=0 and archived=0", fetch=True, one=True)['c']
+    latest = q("select id,event_type,message,created_at from notifications where audience='admin' and archived=0 order by id desc limit 1", fetch=True, one=True)
+    return jsonify({'status':'ok','leave_count':leave_count,'advance_count':advance_count,'notification_count':notification_count,'latest':latest})
+
+@app.route("/api/employee-notifications/read", methods=["POST"])
+def employee_notifications_read():
+    token = val('token')
+    p = q("select id from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+    if not p: return jsonify({'status':'error','message':'geçersiz giriş'}),401
+    q("update notifications set is_read=1 where person_id=%s and audience='personel' and archived=0", (p['id'],))
+    return jsonify({'status':'ok'})
 
 @app.route("/admin/salary")
 def salary():
@@ -674,7 +746,8 @@ def payroll(pid):
 def notifications_page():
     guard = admin_required()
     if guard: return guard
-    rows = q("select n.*,p.full_name from notifications n left join personnel p on p.id=n.person_id where substring(n.created_at,1,10)=%s order by n.id desc limit 300", (today_str(),), fetch=True)
+    rows = q("select n.*,p.full_name from notifications n left join personnel p on p.id=n.person_id where n.audience='admin' and n.archived=0 order by n.id desc limit 300", fetch=True)
+    q("update notifications set is_read=1 where audience='admin' and archived=0")
     return render_template("notifications.html", title="Bildirimler", rows=rows)
 
 @app.route("/admin/reports")
@@ -855,8 +928,34 @@ def employee_leave_request():
         return jsonify({"status": "error", "message": "tarih eksik"}), 400
     count = days_between(start, end)
     q("insert into leave_requests(person_id,start_date,end_date,days_count,note,status,created_at) values(%s,%s,%s,%s,%s,'Beklemede',%s)", (p["id"], start, end, count, note, now_str()))
-    notify("Yeni izin talebi", f"{p['full_name']} {count} günlük izin talebi gönderdi.", p["id"])
+    notify("Yeni izin talebi", f"{p['full_name']} {count} günlük izin talebi gönderdi.", p["id"], 'admin')
     return jsonify({"status": "ok", "message": "İzin talebi gönderildi", "days_count": count})
+
+@app.route("/api/employee-advance-request", methods=["POST"])
+def employee_advance_request():
+    token = val("token")
+    p = q("select id,full_name from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+    if not p:
+        return jsonify({"status":"error","message":"geçersiz giriş"}), 401
+    try:
+        amount = float(val("amount", 0) or 0)
+    except Exception:
+        amount = 0
+    note = val("note", "")
+    if amount <= 0:
+        return jsonify({"status":"error","message":"Geçerli bir tutar girin."}), 400
+    q("insert into advance_requests(person_id,amount,note,status,created_at) values(%s,%s,%s,'Beklemede',%s)", (p["id"], amount, note, now_str()))
+    notify("Yeni avans talebi", f"{p['full_name']} {amount:.2f} TL avans talebi gönderdi.", p["id"], 'admin')
+    return jsonify({"status":"ok","message":"Avans talebiniz gönderildi."})
+
+@app.route("/api/employee-advance-requests")
+def employee_advance_requests():
+    token = val("token")
+    p = q("select id from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+    if not p:
+        return jsonify({"status":"error","message":"geçersiz giriş"}), 401
+    rows = q("select id,amount,note,status,created_at,decided_at from advance_requests where person_id=%s order by id desc limit 50", (p["id"],), fetch=True)
+    return jsonify({"status":"ok","requests":[{**r,"amount":float(r.get('amount') or 0)} for r in rows]})
 
 @app.route("/api/employee-notifications", methods=["GET", "POST"])
 def employee_notifications():
@@ -864,7 +963,7 @@ def employee_notifications():
     p = q("select id from personnel where token=%s and active=1", (token,), fetch=True, one=True)
     if not p:
         return jsonify({"status": "error", "message": "geçersiz giriş"}), 401
-    rows = q("select id,event_type,message,created_at,is_read from notifications where person_id=%s and substring(created_at,1,10)=%s order by id desc limit 50", (p["id"], today_str()), fetch=True)
+    rows = q("select id,event_type,message,created_at,is_read from notifications where person_id=%s and audience='personel' and archived=0 order by id desc limit 50", (p["id"],), fetch=True)
     return jsonify({"status": "ok", "notifications": rows})
 
 # ---------------- PERSONEL PWA / iOS SAFARI ----------------
@@ -874,12 +973,14 @@ def personel_pwa():
     return render_template("personel_pwa.html")
 
 @app.route("/manifest.json")
+@app.route("/personel/manifest.webmanifest")
 def pwa_manifest():
-    return send_file("static/pwa/manifest.json", mimetype="application/manifest+json")
+    return send_file("static/personel-pwa/manifest.webmanifest", mimetype="application/manifest+json")
 
 @app.route("/sw.js")
+@app.route("/personel/service-worker.js")
 def pwa_service_worker():
-    response = send_file("static/pwa/sw.js", mimetype="application/javascript")
+    response = send_file("static/personel-pwa/service-worker.js", mimetype="application/javascript")
     response.headers["Cache-Control"] = "no-cache"
     response.headers["Service-Worker-Allowed"] = "/"
     return response
