@@ -1,0 +1,15 @@
+HIZ + BİLDİRİM DÜZELTMESİ
+
+1. Bu klasörün içindeki tüm dosyaları GitHub projenizin üzerine yükleyin.
+2. Commit changes yapın ve Render deploy tamamlanana kadar bekleyin.
+3. Personel uygulamasını ana ekrandan açın ve “Telefon bildirimlerini etkinleştir” düğmesine bir kez basın.
+4. Patron panelinde “Patron bildirimlerini aç” düğmesine bir kez basın.
+5. iPhone için PWA Safari > Paylaş > Ana Ekrana Ekle ile kurulmuş olmalıdır.
+
+Düzeltmeler:
+- Aynı HTTP isteğinde tek Neon bağlantısı kullanılır; sayfa başına onlarca TLS bağlantısı açılmaz.
+- Veritabanı hazırlığı ilk ziyaretçiyi bekletmez, Render başlangıcında yapılır.
+- Push TTL 24 saate çıkarıldı; ekran kilitliyken/geçici internetsizlikte bildirim kaybolma ihtimali azaltıldı.
+- Sınırsız bildirim thread'i yerine 2 iş parçacıklı kuyruk kullanılır.
+- Bildirim izni kullanıcı düğmesiyle güvenilir biçimde alınır.
+- API isteklerine 12 saniye zaman aşımı eklendi.

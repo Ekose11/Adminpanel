@@ -1,9 +1,9 @@
-from flask import Flask, render_template, request, redirect, session, flash, jsonify, Response, send_file
+from flask import Flask, render_template, request, redirect, session, flash, jsonify, Response, send_file, g, has_request_context
 from datetime import datetime, date, timedelta
 from urllib.parse import urlparse, unquote
 from io import BytesIO, StringIO
 import os, secrets, csv, json
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 import pg8000
 try:
     from pywebpush import webpush, WebPushException
@@ -25,6 +25,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "eren")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "1234")
 READY = False
+PUSH_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="push")
 LAST_NOTIFICATION_CLEANUP_DATE = None
 ENTRY_LIMIT = "09:00:00"
 EXIT_LIMIT = "18:00:00"
@@ -66,8 +67,18 @@ def rows_to_dicts(cur, rows):
     cols = [c["name"] if isinstance(c, dict) else c[0] for c in cur.description]
     return [dict(zip(cols, r)) for r in rows]
 
+def _request_db():
+    """Aynı HTTP isteğindeki tüm sorgularda tek Neon bağlantısını kullanır."""
+    conn = getattr(g, "_db_conn", None)
+    if conn is None:
+        conn = db()
+        g._db_conn = conn
+    return conn
+
 def q(sql, params=None, fetch=False, one=False):
-    conn = db()
+    in_request = has_request_context()
+    conn = _request_db() if in_request else db()
+    cur = None
     try:
         cur = conn.cursor()
         cur.execute(sql, params or ())
@@ -77,10 +88,25 @@ def q(sql, params=None, fetch=False, one=False):
             if one:
                 data = data[0] if data else None
         conn.commit()
-        cur.close()
         return data
+    except Exception:
+        try: conn.rollback()
+        except Exception: pass
+        raise
     finally:
-        conn.close()
+        if cur is not None:
+            try: cur.close()
+            except Exception: pass
+        if not in_request:
+            try: conn.close()
+            except Exception: pass
+
+@app.teardown_appcontext
+def close_request_db(_error=None):
+    conn = g.pop("_db_conn", None)
+    if conn is not None:
+        try: conn.close()
+        except Exception: pass
 
 def safe_alter(sql):
     try:
@@ -140,6 +166,9 @@ def init_db():
         q("create index if not exists idx_attendance_logs_id on attendance_logs(id desc)")
         q("create index if not exists idx_attendance_logs_person_id on attendance_logs(person_id,id desc)")
         q("create index if not exists idx_push_subscriptions_audience on push_subscriptions(audience,person_id)")
+        q("create index if not exists idx_personnel_token_active on personnel(token,active)")
+        q("create index if not exists idx_personnel_username_active on personnel(username,active)")
+        q("create index if not exists idx_notifications_person_read on notifications(person_id,audience,archived,is_read,id desc)")
     except Exception:
         pass
     q("create table if not exists advance_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, note text default '', status text default 'Beklemede', created_at text not null, decided_at text default '')")
@@ -148,6 +177,9 @@ def init_db():
         q("create index if not exists idx_attendance_logs_id on attendance_logs(id desc)")
         q("create index if not exists idx_attendance_logs_person_id on attendance_logs(person_id,id desc)")
         q("create index if not exists idx_push_subscriptions_audience on push_subscriptions(audience,person_id)")
+        q("create index if not exists idx_personnel_token_active on personnel(token,active)")
+        q("create index if not exists idx_personnel_username_active on personnel(username,active)")
+        q("create index if not exists idx_notifications_person_read on notifications(person_id,audience,archived,is_read,id desc)")
     except Exception:
         pass
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
@@ -178,9 +210,7 @@ def add_cache_headers(response):
 
 @app.before_request
 def before_request():
-    global READY
-    if not READY:
-        init_db()
+    # Şema kurulumu artık ilk kullanıcı isteğinde yapılmaz; uygulama açılırken tamamlanır.
     clear_old_notifications()
 
 # ---------------- HELPERS ----------------
@@ -216,7 +246,7 @@ def _send_push_worker(event_type, message, person_id, audience, url='/'):
         payload = json.dumps({"title": event_type, "body": message, "url": url, "tag": f"{audience}-{event_type}-{person_id or 0}-{int(datetime.utcnow().timestamp())}"}, ensure_ascii=False)
         for row in rows or []:
             try:
-                webpush(subscription_info={"endpoint":row["endpoint"],"keys":{"p256dh":row["p256dh"],"auth":row["auth"]}}, data=payload, vapid_private_key=VAPID_PRIVATE_KEY, vapid_claims=VAPID_CLAIMS, ttl=60)
+                webpush(subscription_info={"endpoint":row["endpoint"],"keys":{"p256dh":row["p256dh"],"auth":row["auth"]}}, data=payload, vapid_private_key=VAPID_PRIVATE_KEY, vapid_claims=VAPID_CLAIMS, ttl=86400, headers={"Urgency":"high"})
             except Exception as exc:
                 status = getattr(getattr(exc, 'response', None), 'status_code', None)
                 if status in (404, 410):
@@ -226,7 +256,8 @@ def _send_push_worker(event_type, message, person_id, audience, url='/'):
         pass
 
 def send_push(event_type, message, person_id=None, audience='personel', url='/'):
-    Thread(target=_send_push_worker, args=(event_type, message, person_id, audience, url), daemon=True).start()
+    # Sınırsız thread üretmek yerine küçük bir kuyruk kullanılır.
+    PUSH_EXECUTOR.submit(_send_push_worker, event_type, message, person_id, audience, url)
 
 def notify(event_type, message, person_id=None, audience='personel', push_url=None):
     q("insert into notifications(person_id,event_type,message,created_at,is_read,audience,archived) values(%s,%s,%s,%s,0,%s,0)", (person_id, event_type, message, now_str(), audience))
@@ -1236,6 +1267,12 @@ def pwa_service_worker():
     response.headers["Service-Worker-Allowed"] = "/"
     return response
 
+
+# Veritabanı şemasını ilk ziyaretçiyi bekletmeden Gunicorn açılışında hazırla.
+try:
+    init_db()
+except Exception as exc:
+    print("DB başlangıç uyarısı:", exc, flush=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))

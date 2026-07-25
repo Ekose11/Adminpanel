@@ -1,3 +1,5 @@
+self.addEventListener('install',e=>self.skipWaiting());
+self.addEventListener('activate',e=>e.waitUntil(self.clients.claim()));
 self.addEventListener('push', event => {
   let data={title:'Personel Sistemi',body:'Yeni bildirim',url:'/admin/dashboard',tag:'admin-push'};
   try{data={...data,...event.data.json()}}catch(e){try{data.body=event.data.text()}catch(_){}}

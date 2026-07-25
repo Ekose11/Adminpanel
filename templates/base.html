@@ -28,7 +28,7 @@
       <a href="/admin/logout">🚪 Çıkış</a>
     </nav>
   </aside>
-  <main class="main">
+  <main class="main"><button id="enableAdminPushBtn" class="btn ghost" type="button" style="float:right;margin:0 0 10px 10px">🔔 Patron bildirimlerini aç</button>
     {% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}
     {% block content %}{% endblock %}
   </main>
@@ -54,7 +54,7 @@
  function beep(){try{const C=window.AudioContext||window.webkitAudioContext,c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=900;g.gain.value=.09;o.start();g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.3);o.stop(c.currentTime+.3)}catch(e){}}
  async function feed(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-feed?after_id='+lastId,{cache:'no-store'}).then(r=>r.json());for(const x of d.events||[]){lastId=Math.max(lastId,Number(x.id));if(!first){beep();window.dispatchEvent(new CustomEvent('attendance-live',{detail:x}))}}localStorage.setItem('admin_last_attendance_id',lastId)}catch(e){}first=false}
  async function badges(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-status',{cache:'no-store'}).then(r=>r.json());badge('leaveBadge',d.leave_count);badge('advanceBadge',d.advance_count);badge('notificationBadge',d.notification_count)}catch(e){}}
- document.addEventListener('click',enableAdminPush,{once:true}); enableAdminPush(); feed(); badges();
- setInterval(feed,12000);setInterval(badges,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){feed();badges()}});
+ document.getElementById('enableAdminPushBtn')?.addEventListener('click',enableAdminPush); feed(); badges();
+ setInterval(feed,15000);setInterval(badges,45000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){feed();badges()}});
 })();
 </script></body></html>
