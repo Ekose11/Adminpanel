@@ -1,0 +1,10 @@
+ANA EKRANA EKLE - NOT FOUND DÜZELTMESİ
+
+1. Bu paketin içindeki dosyaları GitHub projesinin üzerine yükleyin.
+2. Render deploy tamamlanana kadar bekleyin.
+3. Telefonda eski ana ekran kısayolunu kaldırın.
+4. Safari/Chrome site verilerini ve eski PWA önbelleğini temizleyin.
+5. https://adminpanel-wvpi.onrender.com/personel adresini açın.
+6. Sayfa açıldıktan sonra tekrar Ana Ekrana Ekle seçeneğini kullanın.
+
+Düzeltme: /personel ve /personel/ adreslerinin ikisi de artık çalışır. Manifest başlangıç adresi de mevcut Flask route ile eşleştirilmiştir.

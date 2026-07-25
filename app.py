@@ -1250,6 +1250,7 @@ def employee_notifications():
 
 # ---------------- PERSONEL PWA / iOS SAFARI ----------------
 @app.route("/personel")
+@app.route("/personel/")
 @app.route("/personel/login")
 def personel_pwa():
     return render_template("personel_pwa.html")

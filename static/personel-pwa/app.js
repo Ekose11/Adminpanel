@@ -103,5 +103,5 @@ function escapeHtml(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':
 document.addEventListener('click',e=>{const p=e.target.closest('[data-page]');if(p)showPage(p.dataset.page);const s=e.target.closest('[data-open-scanner]');if(s)openScanner(s.dataset.openScanner)});
 $('loginBtn').onclick=login;$('enablePushBtn').onclick=enablePersonPush;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});$('refreshBtn').onclick=refresh;$('startScannerBtn').onclick=startScanner;$('stopScannerBtn').onclick=stopScanner;$('sendLeaveBtn').onclick=sendLeave;$('sendAdvanceBtn').onclick=sendAdvance;$('saveProfileBtn').onclick=saveProfile;$('logoutBtn').onclick=logout;
 const today=new Date().toISOString().slice(0,10);$('leaveStart').value=today;$('leaveEnd').value=today;$('bonusMonth').value=today.slice(0,7);$('bonusMonth').addEventListener('change',loadBonuses);
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/personel/service-worker.js').catch(()=>{}));
+
 if(token){showApp();refresh()}else showLogin();

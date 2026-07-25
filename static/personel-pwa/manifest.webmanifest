@@ -2,7 +2,7 @@
   "name":"Personel Mobil",
   "short_name":"Personel",
   "description":"QR giriş çıkış, izin talebi ve personel işlemleri",
-  "start_url":"/personel/",
+  "start_url":"/personel",
   "scope":"/personel/",
   "display":"standalone",
   "background_color":"#071426",
