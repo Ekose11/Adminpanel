@@ -4,6 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>{{ title or 'Personel Sistemi' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <meta name="theme-color" content="#07111f">
 </head>
 <body>
 <div class="layout">
@@ -34,10 +35,25 @@
 <audio id="adminNotifySound" preload="auto"><source src="data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YRAAAACAgICAgICAgICAgICAgA==" type="audio/wav"></audio>
 <script>
 (function(){
- let lastId=Number(localStorage.getItem('admin_last_notification_id')||0);
- let first=true;
- function badge(id,n){let el=document.getElementById(id); if(n>0){if(!el){el=document.createElement('span');el.id=id;el.className='nav-badge'; const map={leaveBadge:'/admin/leave-requests',advanceBadge:'/admin/advance-requests',notificationBadge:'/admin/notifications'}; const a=document.querySelector('a[href="'+map[id]+'"]');if(a)a.appendChild(el)} if(el)el.textContent=n}else if(el)el.remove()}
- async function poll(){if(document.hidden)return;try{const r=await fetch('/api/admin/live-status',{cache:'no-store'});if(!r.ok)return;const d=await r.json();badge('leaveBadge',d.leave_count);badge('advanceBadge',d.advance_count);badge('notificationBadge',d.notification_count);if(d.latest&&d.latest.id>lastId){if(!first){try{const C=window.AudioContext||window.webkitAudioContext;if(C){const c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=920;g.gain.setValueAtTime(.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.35);o.start();o.stop(c.currentTime+.35)}}catch(e){} if('Notification'in window&&Notification.permission==='granted')new Notification(d.latest.event_type,{body:d.latest.message});}lastId=d.latest.id;localStorage.setItem('admin_last_notification_id',lastId)}}catch(e){}first=false}
- document.addEventListener('click',()=>{if('Notification'in window&&Notification.permission==='default')Notification.requestPermission()},{once:true});poll();setInterval(poll,15000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
+ const b64ToUint=s=>{const pad='='.repeat((4-s.length%4)%4),raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))};
+ async function enableAdminPush(){
+   if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))return;
+   try{
+     const reg=await navigator.serviceWorker.register('/admin-push-sw.js',{scope:'/'});
+     if(Notification.permission==='default')await Notification.requestPermission();
+     if(Notification.permission!=='granted')return;
+     const key=await fetch('/api/push/public-key').then(r=>r.json());
+     let sub=await reg.pushManager.getSubscription();
+     if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint(key.public_key)});
+     await fetch('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audience:'admin',subscription:sub.toJSON()})});
+   }catch(e){console.warn('Push etkinleştirilemedi',e)}
+ }
+ let lastId=Number(localStorage.getItem('admin_last_attendance_id')||0),first=true;
+ function badge(id,n){let el=document.getElementById(id);if(n>0){if(!el){el=document.createElement('span');el.id=id;el.className='nav-badge';const map={leaveBadge:'/admin/leave-requests',advanceBadge:'/admin/advance-requests',notificationBadge:'/admin/notifications'};document.querySelector('a[href="'+map[id]+'"]')?.appendChild(el)}el.textContent=n}else el?.remove()}
+ function beep(){try{const C=window.AudioContext||window.webkitAudioContext,c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=900;g.gain.value=.09;o.start();g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.3);o.stop(c.currentTime+.3)}catch(e){}}
+ async function feed(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-feed?after_id='+lastId,{cache:'no-store'}).then(r=>r.json());for(const x of d.events||[]){lastId=Math.max(lastId,Number(x.id));if(!first){beep();window.dispatchEvent(new CustomEvent('attendance-live',{detail:x}))}}localStorage.setItem('admin_last_attendance_id',lastId)}catch(e){}first=false}
+ async function badges(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-status',{cache:'no-store'}).then(r=>r.json());badge('leaveBadge',d.leave_count);badge('advanceBadge',d.advance_count);badge('notificationBadge',d.notification_count)}catch(e){}}
+ document.addEventListener('click',enableAdminPush,{once:true}); enableAdminPush(); feed(); badges();
+ setInterval(feed,3000);setInterval(badges,20000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){feed();badges()}});
 })();
 </script></body></html>

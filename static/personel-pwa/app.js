@@ -12,10 +12,24 @@ let notificationPollStarted=false;
 const $=id=>document.getElementById(id);
 const money=v=>new Intl.NumberFormat('tr-TR',{maximumFractionDigits:2}).format(Number(v||0))+' TL';
 const formBody=data=>new URLSearchParams(data).toString();
+function b64ToUint(s){const pad='='.repeat((4-s.length%4)%4),raw=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)))}
+async function enablePersonPush(){
+  if(!token||!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))return;
+  try{
+    const reg=await navigator.serviceWorker.register('/personel/service-worker.js',{scope:'/personel/'});
+    if(Notification.permission==='default')await Notification.requestPermission();
+    if(Notification.permission!=='granted')return;
+    const key=await request('/api/push/public-key');
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToUint(key.public_key)});
+    await request('/api/push/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({audience:'personel',token,subscription:sub.toJSON()})});
+  }catch(e){console.warn('Kapalı bildirim etkinleştirilemedi',e)}
+}
+
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600)}
 async function request(path,opts={}){const r=await fetch(API+path,{cache:'no-store',...opts});const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw new Error('Sunucu geçersiz cevap verdi')}if(!r.ok)throw new Error(data.message||'Sunucu hatası');return data}
 function showLogin(){stopScanner();$('loginView').classList.remove('hidden');$('appView').classList.add('hidden')}
-function showApp(){ $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');showPage('homePage');startNotificationPolling() }
+function showApp(){ $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');showPage('homePage');startNotificationPolling();enablePersonPush() }
 function showPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.bottom-nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));if(id!=='scannerPage')stopScanner();if(id==='notificationsPage')loadNotifications();if(id==='advancesPage'){loadAdvanceRequests();loadAdvances();}if(id==='profilePage')fillProfile()}
 function setConnected(ok){const el=$('serverState');el.textContent=ok?'● Bağlı':'● Bağlantı Yok';el.className='pill '+(ok?'online':'offline')}
 function fillPerson(p){if(!p)return;person=p;$('fullName').textContent=p.full_name||'-';$('welcomeName').textContent='Hoş geldin, '+(p.full_name||'Personel').split(' ')[0];$('department').textContent=p.department||'-';$('leaveValue').textContent=(p.annual_leave_remaining||0)+' gün';$('remainingSalary').textContent=money(p.remaining_salary);$('totalAdvance').textContent=money(p.total_advance);$('profilePhone').value=p.phone||'';$('profileAddress').value=p.address||'';if(p.photo_data)$('avatar').src=p.photo_data}
@@ -57,7 +71,7 @@ function startNotificationPolling(){
   if(notificationPollStarted)return;notificationPollStarted=true;
   if('Notification'in window&&Notification.permission==='default'){document.addEventListener('click',()=>Notification.requestPermission(),{once:true})}
   pollNotifications();loadNotificationBadge();
-  setInterval(pollNotifications,20000);
+  setInterval(pollNotifications,60000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollNotifications()});
 }
 

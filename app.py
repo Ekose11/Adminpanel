@@ -2,8 +2,14 @@ from flask import Flask, render_template, request, redirect, session, flash, jso
 from datetime import datetime, date, timedelta
 from urllib.parse import urlparse, unquote
 from io import BytesIO, StringIO
-import os, secrets, csv
+import os, secrets, csv, json
+from threading import Thread
 import pg8000
+try:
+    from pywebpush import webpush, WebPushException
+except Exception:
+    webpush = None
+    WebPushException = Exception
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -24,6 +30,9 @@ ENTRY_LIMIT = "09:00:00"
 EXIT_LIMIT = "18:00:00"
 DOUBLE_SCAN_SECONDS = 10
 TERMINAL_QR_TOKEN = os.environ.get("TERMINAL_QR_TOKEN", "PERSONEL-TEK-QR-GIRIS-CIKIS")
+VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "BHXwlsT6E8iQBx018lo4nw-G9Lg2YcjAGWh7iZ3bvZfOvgabxUoCe_nKqwltezPzfd93eB01webaLLRZDQWKWSQ")
+VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", os.path.join(os.path.dirname(__file__), "vapid_private.pem"))
+VAPID_CLAIMS = {"sub": os.environ.get("VAPID_SUBJECT", "mailto:admin@example.com")}
 
 FONT_NAME = "Helvetica"
 try:
@@ -109,6 +118,16 @@ def init_db():
     q("create table if not exists attendance_logs(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, start_date text not null, end_date text not null, days_count integer default 0, note text default '', status text default 'Beklemede', created_at text not null)")
     q("create table if not exists notifications(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, message text not null, created_at text not null, is_read integer default 0, audience text default 'personel', archived integer default 0)")
+    q("""create table if not exists push_subscriptions(
+        id serial primary key,
+        endpoint text unique not null,
+        p256dh text not null,
+        auth text not null,
+        audience text not null default 'personel',
+        person_id integer references personnel(id) on delete cascade,
+        created_at text not null,
+        last_seen text not null
+    )""")
     safe_alter("alter table notifications add column audience text default 'personel'")
     safe_alter("alter table notifications add column archived integer default 0")
     safe_alter("alter table notifications add column delivered_at text default ''")
@@ -118,9 +137,19 @@ def init_db():
         q("create index if not exists idx_notifications_admin_unread on notifications(audience,archived,is_read,id)")
         q("create index if not exists idx_leave_requests_status on leave_requests(status)")
         q("create index if not exists idx_advance_requests_status on advance_requests(status)")
+        q("create index if not exists idx_attendance_logs_id on attendance_logs(id desc)")
+        q("create index if not exists idx_attendance_logs_person_id on attendance_logs(person_id,id desc)")
+        q("create index if not exists idx_push_subscriptions_audience on push_subscriptions(audience,person_id)")
     except Exception:
         pass
     q("create table if not exists advance_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, note text default '', status text default 'Beklemede', created_at text not null, decided_at text default '')")
+    try:
+        q("create index if not exists idx_advance_requests_status on advance_requests(status)")
+        q("create index if not exists idx_attendance_logs_id on attendance_logs(id desc)")
+        q("create index if not exists idx_attendance_logs_person_id on attendance_logs(person_id,id desc)")
+        q("create index if not exists idx_push_subscriptions_audience on push_subscriptions(audience,person_id)")
+    except Exception:
+        pass
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
     q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, month text not null, note text default '', created_at text not null)")
     READY = True
@@ -154,8 +183,32 @@ def now_str():
 def today_str():
     return now_dt().date().isoformat()
 
-def notify(event_type, message, person_id=None, audience='personel'):
+def _send_push_worker(event_type, message, person_id, audience, url='/'):
+    if not webpush:
+        return
+    try:
+        if audience == 'admin':
+            rows = q("select id,endpoint,p256dh,auth from push_subscriptions where audience='admin'", fetch=True)
+        else:
+            rows = q("select id,endpoint,p256dh,auth from push_subscriptions where audience='personel' and person_id=%s", (person_id,), fetch=True)
+        payload = json.dumps({"title": event_type, "body": message, "url": url, "tag": f"{audience}-{event_type}-{person_id or 0}-{int(datetime.utcnow().timestamp())}"}, ensure_ascii=False)
+        for row in rows or []:
+            try:
+                webpush(subscription_info={"endpoint":row["endpoint"],"keys":{"p256dh":row["p256dh"],"auth":row["auth"]}}, data=payload, vapid_private_key=VAPID_PRIVATE_KEY, vapid_claims=VAPID_CLAIMS, ttl=60)
+            except Exception as exc:
+                status = getattr(getattr(exc, 'response', None), 'status_code', None)
+                if status in (404, 410):
+                    try: q("delete from push_subscriptions where id=%s", (row['id'],))
+                    except Exception: pass
+    except Exception:
+        pass
+
+def send_push(event_type, message, person_id=None, audience='personel', url='/'):
+    Thread(target=_send_push_worker, args=(event_type, message, person_id, audience, url), daemon=True).start()
+
+def notify(event_type, message, person_id=None, audience='personel', push_url=None):
     q("insert into notifications(person_id,event_type,message,created_at,is_read,audience,archived) values(%s,%s,%s,%s,0,%s,0)", (person_id, event_type, message, now_str(), audience))
+    send_push(event_type, message, person_id, audience, push_url or ('/admin/dashboard' if audience == 'admin' else '/personel/'))
 
 def clear_old_notifications():
     # 30 günden eski bildirimleri silmek yerine arşivler.
@@ -822,6 +875,8 @@ def record_attendance(pid):
     if last and last["event_type"] == "entry" and last["event_time"][:10] == t[:10]:
         event_type = "exit"
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,%s,%s)", (pid, event_type, t))
+    action_text = "giriş yaptı" if event_type == "entry" else "çıkış yaptı"
+    notify("Personel Giriş/Çıkış", f"{person['full_name']} {t[11:16]} saatinde {action_text}.", pid, "admin", "/admin/dashboard")
     warn = warning_for_person(pid, event_type, t)
     return {"status": "ok", "message": "Giriş kaydedildi" if event_type == "entry" else "Çıkış kaydedildi", "person_id": pid, "full_name": person["full_name"], "event_type": event_type, "event_time": t, "warning": warn}, 200
 
@@ -833,6 +888,7 @@ def api_entry():
     t = now_str()
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'entry',%s)", (pid, t))
     p = q("select full_name from personnel where id=%s", (pid,), fetch=True, one=True)
+    if p: notify("Personel Giriş", f"{p['full_name']} {t[11:16]} saatinde giriş yaptı.", int(pid), "admin", "/admin/dashboard")
     return jsonify({"status": "ok", "full_name": p["full_name"] if p else "Personel", "event_type": "entry", "person_id": int(pid), "event_time": t, "warning": warning_for_person(int(pid), "entry", t)})
 
 @app.route("/api/exit", methods=["GET", "POST"])
@@ -843,6 +899,7 @@ def api_exit():
     t = now_str()
     q("insert into attendance_logs(person_id,event_type,event_time) values(%s,'exit',%s)", (pid, t))
     p = q("select full_name from personnel where id=%s", (pid,), fetch=True, one=True)
+    if p: notify("Personel Çıkış", f"{p['full_name']} {t[11:16]} saatinde çıkış yaptı.", int(pid), "admin", "/admin/dashboard")
     return jsonify({"status": "ok", "full_name": p["full_name"] if p else "Personel", "event_type": "exit", "person_id": int(pid), "event_time": t, "warning": warning_for_person(int(pid), "exit", t)})
 
 @app.route("/api/qr/verify", methods=["GET", "POST"])
@@ -866,6 +923,55 @@ def api_qr_verify():
         return jsonify({"status": "error", "message": "Personel bilgisi eksik"}), 400
     data, code = record_attendance(int(person_id))
     return jsonify(data), code
+
+@app.route("/api/push/public-key")
+def push_public_key():
+    return jsonify({"status":"ok", "public_key":VAPID_PUBLIC_KEY})
+
+@app.route("/api/push/subscribe", methods=["POST"])
+def push_subscribe():
+    data = request.get_json(silent=True) or {}
+    sub = data.get("subscription") or data
+    endpoint = sub.get("endpoint")
+    keys = sub.get("keys") or {}
+    audience = data.get("audience") or "personel"
+    person_id = None
+    if audience == "admin":
+        if not admin_ok(): return jsonify({"status":"error","message":"Yetkisiz"}), 401
+    else:
+        token = data.get("token") or val("token")
+        person = q("select id from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+        if not person: return jsonify({"status":"error","message":"Personel oturumu geçersiz"}), 401
+        person_id = person["id"]
+    if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+        return jsonify({"status":"error","message":"Bildirim aboneliği eksik"}), 400
+    q("""insert into push_subscriptions(endpoint,p256dh,auth,audience,person_id,created_at,last_seen)
+         values(%s,%s,%s,%s,%s,%s,%s)
+         on conflict(endpoint) do update set p256dh=excluded.p256dh,auth=excluded.auth,audience=excluded.audience,person_id=excluded.person_id,last_seen=excluded.last_seen""",
+      (endpoint,keys["p256dh"],keys["auth"],audience,person_id,now_str(),now_str()))
+    return jsonify({"status":"ok","message":"Kapalıyken bildirim etkinleştirildi"})
+
+@app.route("/api/admin/live-feed")
+def admin_live_feed():
+    guard = admin_required()
+    if guard: return jsonify({"status":"error"}), 401
+    after = int(request.args.get("after_id") or 0)
+    rows = q("""select a.id,a.event_type,a.event_time,p.full_name,p.department
+                from attendance_logs a join personnel p on p.id=a.person_id
+                where a.id>%s order by a.id asc limit 20""", (after,), fetch=True)
+    latest_id = rows[-1]["id"] if rows else after
+    return jsonify({"status":"ok","events":rows,"latest_id":latest_id})
+
+@app.route("/api/admin/dashboard-summary")
+def admin_dashboard_summary():
+    guard = admin_required()
+    if guard: return jsonify({"status":"error"}), 401
+    ts = today_status_rows()
+    return jsonify({"status":"ok","personel":len(ts),"inside":sum(1 for r in ts if r["status"]=="İşte"),"late":sum(1 for r in ts if r["warning"]=="Geç giriş"),"early":sum(1 for r in ts if r["warning"]=="Erken çıkış")})
+
+@app.route("/admin-push-sw.js")
+def admin_push_sw():
+    return app.send_static_file("admin-push-sw.js"), 200, {"Content-Type":"application/javascript","Service-Worker-Allowed":"/"}
 
 @app.route("/api/my-qr")
 def api_my_qr():

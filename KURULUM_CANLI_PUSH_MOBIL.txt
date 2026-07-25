@@ -1,0 +1,30 @@
+BOZTEK CANLI PANEL + KAPALIYKEN BILDIRIM KURULUMU
+==================================================
+
+1) Bu klasörün İÇİNDEKİ tüm dosyaları GitHub deponuzdaki mevcut dosyaların üzerine yükleyin.
+2) GitHub üzerinde Commit changes yapın.
+3) Render otomatik deploy işlemini tamamlayana kadar bekleyin.
+4) Render Environment bölümündeki DATABASE_URL, ADMIN_USERNAME ve ADMIN_PASSWORD değerlerini değiştirmeyin.
+5) İlk açılışta push_subscriptions tablosu ve hız indeksleri otomatik oluşur. Mevcut personel ve kayıtlar silinmez.
+
+PATRON TELEFONU
+- Yönetici panelini telefonda açın ve giriş yapın.
+- Tarayıcı bildirim izni sorulduğunda İzin Ver seçin.
+- iPhone'da en sağlıklı kullanım için Safari > Paylaş > Ana Ekrana Ekle yapın.
+- Ana ekrandaki paneli bir kez açıp giriş yaptıktan sonra bildirim izni verin.
+
+PERSONEL TELEFONU
+- /personel/ adresini açın ve giriş yapın.
+- Bildirim izni verin.
+- iPhone'da Safari > Paylaş > Ana Ekrana Ekle yapın. iOS'ta uygulama kapalı bildirimi için PWA'nın ana ekrana kurulması gerekir.
+
+YENİ ÖZELLİKLER
+- Uygulama kapalıyken izin, avans ve maaş sonuç bildirimleri Web Push ile gelir.
+- QR giriş/çıkışında patrona personel adı, işlem ve saat bildirimi gelir.
+- Dashboard açıkken giriş/çıkış 3 saniye içinde canlı kart olarak görünür.
+- Dashboard artık 10 saniyede bir komple yenilenmez.
+- Mobil menü yatay kaydırmalı, tablolar ve kartlar telefon ekranına uyumludur.
+- Bildirimler tekrar tekrar gönderilmez; her olay için tek push üretilir.
+
+NOT
+Render deploy sonrası eski PWA dosyası görünürse telefonu tarayıcıdan kapatıp yeniden açın. Gerekirse ana ekran kısayolunu kaldırıp tekrar ekleyin.
