@@ -22,6 +22,7 @@
       <a href="/admin/advance-requests">💳 Avans Talepleri {% if advance_badge %}<span id="advanceBadge" class="nav-badge">{{advance_badge}}</span>{% endif %}</a>
       <a href="/admin/advances">💸 Avanslar</a>
       <a href="/admin/salary">💰 Maaşlar</a>
+      <a href="/admin/bonuses">🎁 Günlük Prim</a>
       <a href="/admin/notifications">🔔 Bildirimler {% if notification_badge %}<span id="notificationBadge" class="nav-badge">{{notification_badge}}</span>{% endif %}</a>
       <a href="/admin/reports">📄 Aylık Rapor</a>
       <a href="/admin/logout">🚪 Çıkış</a>
@@ -54,6 +55,6 @@
  async function feed(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-feed?after_id='+lastId,{cache:'no-store'}).then(r=>r.json());for(const x of d.events||[]){lastId=Math.max(lastId,Number(x.id));if(!first){beep();window.dispatchEvent(new CustomEvent('attendance-live',{detail:x}))}}localStorage.setItem('admin_last_attendance_id',lastId)}catch(e){}first=false}
  async function badges(){if(document.hidden)return;try{const d=await fetch('/api/admin/live-status',{cache:'no-store'}).then(r=>r.json());badge('leaveBadge',d.leave_count);badge('advanceBadge',d.advance_count);badge('notificationBadge',d.notification_count)}catch(e){}}
  document.addEventListener('click',enableAdminPush,{once:true}); enableAdminPush(); feed(); badges();
- setInterval(feed,3000);setInterval(badges,20000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){feed();badges()}});
+ setInterval(feed,12000);setInterval(badges,30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){feed();badges()}});
 })();
 </script></body></html>

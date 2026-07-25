@@ -1,0 +1,19 @@
+HIZ + GÜNLÜK PRİM + KAPALI BİLDİRİM GÜNCELLEMESİ
+
+1) Adminpanel-main klasörünün içindeki tüm dosyaları GitHub deponuzun üzerine yükleyin.
+2) Commit changes yapın ve Render deploy tamamlanana kadar bekleyin.
+3) Render Environment içinde DATABASE_URL, SECRET_KEY ve VAPID ayarları korunmalıdır.
+4) Personel telefonunda PWA'yı bir kez açın, giriş yapın ve bildirim iznine izin verin.
+5) iPhone'da Safari > Paylaş > Ana Ekrana Ekle ile kurun. iOS 16.4 veya üstünde web push desteklenir.
+6) Eski önbellek kalırsa ana ekrandaki eski uygulamayı silip yeniden ekleyin.
+
+YENİ MENÜ:
+- Yönetici: Günlük Prim
+- Personel: Prim
+- Günlük kayıtlar ay bazında otomatik toplanır.
+
+PERFORMANS:
+- Dashboard N+1 veritabanı sorguları kaldırıldı.
+- Sürekli personel bildirim sorgusu kaldırıldı; Web Push kullanılır.
+- Dashboard tam yenileme sorgusu kaldırıldı.
+- Statik dosyalara önbellek eklendi.

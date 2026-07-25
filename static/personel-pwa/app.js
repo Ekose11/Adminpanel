@@ -30,11 +30,11 @@ function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show')
 async function request(path,opts={}){const r=await fetch(API+path,{cache:'no-store',...opts});const text=await r.text();let data;try{data=JSON.parse(text)}catch{throw new Error('Sunucu geçersiz cevap verdi')}if(!r.ok)throw new Error(data.message||'Sunucu hatası');return data}
 function showLogin(){stopScanner();$('loginView').classList.remove('hidden');$('appView').classList.add('hidden')}
 function showApp(){ $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');showPage('homePage');startNotificationPolling();enablePersonPush() }
-function showPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.bottom-nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));if(id!=='scannerPage')stopScanner();if(id==='notificationsPage')loadNotifications();if(id==='advancesPage'){loadAdvanceRequests();loadAdvances();}if(id==='profilePage')fillProfile()}
+function showPage(id){document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.bottom-nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===id));if(id!=='scannerPage')stopScanner();if(id==='notificationsPage')loadNotifications();if(id==='advancesPage'){loadAdvanceRequests();loadAdvances();}if(id==='profilePage')fillProfile();if(id==='bonusPage')loadBonuses()}
 function setConnected(ok){const el=$('serverState');el.textContent=ok?'● Bağlı':'● Bağlantı Yok';el.className='pill '+(ok?'online':'offline')}
-function fillPerson(p){if(!p)return;person=p;$('fullName').textContent=p.full_name||'-';$('welcomeName').textContent='Hoş geldin, '+(p.full_name||'Personel').split(' ')[0];$('department').textContent=p.department||'-';$('leaveValue').textContent=(p.annual_leave_remaining||0)+' gün';$('remainingSalary').textContent=money(p.remaining_salary);$('totalAdvance').textContent=money(p.total_advance);$('profilePhone').value=p.phone||'';$('profileAddress').value=p.address||'';if(p.photo_data)$('avatar').src=p.photo_data}
+function fillPerson(p){if(!p)return;person=p;$('fullName').textContent=p.full_name||'-';$('welcomeName').textContent='Hoş geldin, '+(p.full_name||'Personel').split(' ')[0];$('department').textContent=p.department||'-';$('leaveValue').textContent=(p.annual_leave_remaining||0)+' gün';$('remainingSalary').textContent=money(p.remaining_salary);$('totalAdvance').textContent=money(p.total_advance);$('profilePhone').value=p.phone||'';$('profileAddress').value=p.address||'';$('monthlyBonus').textContent=money(p.monthly_bonus||0);if(p.photo_data)$('avatar').src=p.photo_data}
 async function login(){const u=$('username').value.trim(),p=$('password').value;if(!u||!p){$('loginStatus').textContent='Kullanıcı adı ve şifre girin.';return}const b=$('loginBtn');b.disabled=true;$('loginStatus').textContent='Giriş yapılıyor…';try{const d=await request('/api/employee-login?username='+encodeURIComponent(u)+'&password='+encodeURIComponent(p));if(d.status!=='ok')throw new Error(d.message||'Giriş başarısız');token=d.token;localStorage.setItem('personel_token',token);fillPerson(d.person);showApp();setConnected(true);refresh()}catch(e){$('loginStatus').textContent=e.message;setConnected(false)}finally{b.disabled=false}}
-async function refresh(){try{const [me,time]=await Promise.all([request('/api/employee-me?token='+encodeURIComponent(token)),request('/api/server-time')]);if(me.status!=='ok')throw new Error(me.message||'Oturum kapandı');fillPerson(me.person);$('serverTime').textContent=time.datetime||time.time||'--:--';setConnected(true)}catch(e){setConnected(false);if(/oturum|token|giriş/i.test(e.message)){localStorage.removeItem('personel_token');token='';showLogin()}else toast(e.message)}}
+async function refresh(){try{const me=await request('/api/employee-me?token='+encodeURIComponent(token));if(me.status!=='ok')throw new Error(me.message||'Oturum kapandı');fillPerson(me.person);setConnected(true)}catch(e){setConnected(false);if(/oturum|token|giriş/i.test(e.message)){localStorage.removeItem('personel_token');token='';showLogin()}else toast(e.message)}}
 function openScanner(action){selectedAction=action;$('scannerTitle').textContent=action==='entry'?'QR Giriş':'QR Çıkış';$('scannerStatus').textContent='Kamera hazırlanıyor…';showPage('scannerPage');startScanner()}
 async function startScanner(){if(scannerRunning||scanLocked)return;if(typeof Html5Qrcode==='undefined'){$('scannerStatus').textContent='QR motoru yüklenemedi.';return}scanner=new Html5Qrcode('reader',{verbose:false});scanLocked=false;try{const cams=await Html5Qrcode.getCameras();const rear=cams.find(c=>/back|rear|environment|arka/i.test(c.label))||cams[cams.length-1];if(!rear)throw new Error('Kamera bulunamadı');scannerRunning=true;await scanner.start(rear.id,{fps:24,qrbox:(w,h)=>({width:Math.min(w,h)*.72,height:Math.min(w,h)*.72}),aspectRatio:1.0,disableFlip:true},onScan,()=>{});$('scannerStatus').textContent='QR kodu okutun.'}catch(e){scannerRunning=false;$('scannerStatus').textContent='Kamera açılamadı: '+e.message}}
 async function stopScanner(){if(scanner&&scannerRunning){try{await scanner.stop();await scanner.clear()}catch{} }scanner=null;scannerRunning=false}
@@ -70,10 +70,16 @@ async function loadNotificationBadge(){
 function startNotificationPolling(){
   if(notificationPollStarted)return;notificationPollStarted=true;
   if('Notification'in window&&Notification.permission==='default'){document.addEventListener('click',()=>Notification.requestPermission(),{once:true})}
-  pollNotifications();loadNotificationBadge();
-  setInterval(pollNotifications,60000);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollNotifications()});
+  loadNotificationBadge();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadNotificationBadge()});
 }
+
+async function loadBonuses(){
+  const month=$('bonusMonth').value||new Date().toISOString().slice(0,7);
+  const box=$('bonusList');box.innerHTML='<div class="empty">Primler yükleniyor…</div>';
+  try{const d=await request('/api/employee-bonuses?token='+encodeURIComponent(token)+'&month='+encodeURIComponent(month));$('bonusTotal').textContent=money(d.total);box.innerHTML=(d.bonuses||[]).length?d.bonuses.map(x=>`<article class="list-card"><h3>${money(x.amount)}</h3><p>${escapeHtml(x.note||'-')}</p><small>${escapeHtml(x.bonus_date||'')}</small></article>`).join(''):'<div class="empty">Bu ay prim kaydı yok.</div>'}catch(e){box.innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'}
+}
+
 
 async function loadAdvances(){const box=$('advancesList');box.innerHTML='<div class="empty">Avanslar yükleniyor…</div>';try{const d=await request('/api/employee-advances?token='+encodeURIComponent(token));const a=d.advances||[];box.innerHTML=a.length?a.map(x=>`<article class="list-card"><h3>${money(x.amount)}</h3><p>${escapeHtml(x.status||'')}</p><small>${escapeHtml(x.created_at||x.date||'')}</small></article>`).join(''):'<div class="empty">Avans kaydı bulunamadı.</div>'}catch(e){box.innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'}}
 function fillProfile(){$('profilePhone').value=person.phone||'';$('profileAddress').value=person.address||''}
@@ -84,6 +90,6 @@ function escapeHtml(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':
 
 document.addEventListener('click',e=>{const p=e.target.closest('[data-page]');if(p)showPage(p.dataset.page);const s=e.target.closest('[data-open-scanner]');if(s)openScanner(s.dataset.openScanner)});
 $('loginBtn').onclick=login;$('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});$('refreshBtn').onclick=refresh;$('startScannerBtn').onclick=startScanner;$('stopScannerBtn').onclick=stopScanner;$('sendLeaveBtn').onclick=sendLeave;$('sendAdvanceBtn').onclick=sendAdvance;$('saveProfileBtn').onclick=saveProfile;$('logoutBtn').onclick=logout;
-const today=new Date().toISOString().slice(0,10);$('leaveStart').value=today;$('leaveEnd').value=today;
+const today=new Date().toISOString().slice(0,10);$('leaveStart').value=today;$('leaveEnd').value=today;$('bonusMonth').value=today.slice(0,7);$('bonusMonth').addEventListener('change',loadBonuses);
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/personel/service-worker.js').catch(()=>{}));
 if(token){showApp();refresh()}else showLogin();

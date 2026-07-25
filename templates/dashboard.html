@@ -6,5 +6,5 @@
 <script>
 window.addEventListener('attendance-live',e=>{const x=e.detail,box=document.getElementById('liveAttendance');document.getElementById('liveName').textContent=x.full_name;document.getElementById('liveAction').textContent=x.event_type==='entry'?'giriş yaptı':'çıkış yaptı';document.getElementById('liveTime').textContent=(x.event_time||'').slice(11,16);box.classList.remove('hidden');box.classList.add(x.event_type==='entry'?'entry':'exit');setTimeout(()=>box.classList.add('hidden'),7000);refreshSummary()});
 async function refreshSummary(){try{const d=await fetch('/api/admin/dashboard-summary',{cache:'no-store'}).then(r=>r.json());if(d.status==='ok'){statPersonel.textContent=d.personel;statInside.textContent=d.inside;statLate.textContent=d.late;statEarly.textContent=d.early}}catch(e){}}
-setInterval(refreshSummary,15000);
+
 </script>{% endblock %}

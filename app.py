@@ -152,7 +152,29 @@ def init_db():
         pass
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
     q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, month text not null, note text default '', created_at text not null)")
+    q("""create table if not exists daily_bonuses(
+        id serial primary key,
+        person_id integer references personnel(id) on delete cascade,
+        bonus_date text not null,
+        amount numeric not null,
+        note text default '',
+        created_at text not null,
+        unique(person_id, bonus_date)
+    )""")
+    try:
+        q("create index if not exists idx_daily_bonuses_person_date on daily_bonuses(person_id,bonus_date desc)")
+        q("create index if not exists idx_attendance_logs_event_time on attendance_logs(event_time)")
+    except Exception:
+        pass
     READY = True
+
+@app.after_request
+def add_cache_headers(response):
+    if request.path.startswith("/static/"):
+        response.headers["Cache-Control"]="public, max-age=86400"
+    elif request.path.startswith("/api/"):
+        response.headers["Cache-Control"]="no-store"
+    return response
 
 @app.before_request
 def before_request():
@@ -346,14 +368,17 @@ def warning_for(event_type, event_time):
     return ""
 
 def person_summary(pid):
-    p = q("select p.*, coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id where p.id=%s group by p.id", (pid,), fetch=True, one=True)
+    p = q("""select p.*,
+        coalesce((select sum(a.amount) from advances a where a.person_id=p.id),0) total_advance,
+        coalesce((select sum(b.amount) from daily_bonuses b where b.person_id=p.id and substring(b.bonus_date,1,7)=%s),0) monthly_bonus
+        from personnel p where p.id=%s""", (now_dt().strftime("%Y-%m"), pid), fetch=True, one=True)
     if not p:
         return None
     salary = float(p.get("salary") or 0)
     advance = float(p.get("total_advance") or 0)
     return {
         "id": p["id"], "full_name": p["full_name"], "department": p["department"],
-        "salary": salary, "total_advance": advance, "remaining_salary": salary - advance,
+        "salary": salary, "total_advance": advance, "remaining_salary": salary - advance, "monthly_bonus": float(p.get("monthly_bonus") or 0),
         "annual_leave_total": p.get("annual_leave_total") or 0,
         "annual_leave_used": p.get("annual_leave_used") or 0,
         "annual_leave_remaining": p.get("annual_leave_remaining") or 0,
@@ -363,17 +388,35 @@ def person_summary(pid):
 
 def today_status_rows():
     today = today_str()
-    people = q("select * from personnel where active=1 order by full_name", fetch=True)
-    logs = q("select distinct on (person_id) person_id,event_type,event_time from attendance_logs where substring(event_time,1,10)=%s order by person_id,id desc", (today,), fetch=True)
-    log_map = {r["person_id"]: r for r in logs}
-    out = []
-    for p in people:
-        log = log_map.get(p["id"])
-        if not log:
-            out.append({"id": p["id"], "full_name": p["full_name"], "department": p["department"], "status": "Bekleniyor", "last_time": "", "warning": "", "shift": f"{p.get('shift_name') or 'Sabah'} {p.get('shift_start') or '09:00'}-{p.get('shift_end') or '18:00'}"})
+    rows = q("""
+        select p.id,p.full_name,p.department,p.shift_name,p.shift_start,p.shift_end,
+               l.event_type,l.event_time
+        from personnel p
+        left join lateral (
+            select event_type,event_time
+            from attendance_logs a
+            where a.person_id=p.id and a.event_time like %s
+            order by a.id desc limit 1
+        ) l on true
+        where p.active=1
+        order by p.full_name
+    """, (today + '%',), fetch=True)
+    out=[]
+    for p in rows:
+        if not p.get('event_type'):
+            status='Bekleniyor'; warning=''; last_time=''
         else:
-            st = "İşte" if log["event_type"] == "entry" else "Çıkış yaptı"
-            out.append({"id": p["id"], "full_name": p["full_name"], "department": p["department"], "status": st, "last_time": log["event_time"], "warning": warning_for_person(p["id"], log["event_type"], log["event_time"]), "shift": f"{p.get('shift_name') or 'Sabah'} {p.get('shift_start') or '09:00'}-{p.get('shift_end') or '18:00'}"})
+            status='İşte' if p['event_type']=='entry' else 'Çıkış yaptı'
+            last_time=p.get('event_time') or ''
+            t=time_part(last_time)
+            start=((p.get('shift_start') or '09:00')+':00')
+            end=((p.get('shift_end') or '18:00')+':00')
+            warning='Geç giriş' if p['event_type']=='entry' and t>start else ('Erken çıkış' if p['event_type']=='exit' and t<end else '')
+        out.append({
+            'id':p['id'],'full_name':p['full_name'],'department':p['department'],
+            'status':status,'last_time':last_time,'warning':warning,
+            'shift':f"{p.get('shift_name') or 'Sabah'} {p.get('shift_start') or '09:00'}-{p.get('shift_end') or '18:00'}"
+        })
     return out
 
 def monthly_puantaj_rows(month=None):
@@ -474,7 +517,7 @@ def dashboard():
     guard = admin_required()
     if guard: return guard
     ts = today_status_rows()
-    stats = q("select (select count(*) from personnel) personel,(select count(*) from advances) avans,(select count(*) from leaves) izin", fetch=True, one=True)
+    stats = {"personel": len(ts), "avans": 0, "izin": 0}
     stats["inside"] = sum(1 for r in ts if r["status"] == "İşte")
     stats["late"] = sum(1 for r in ts if r["warning"] == "Geç giriş")
     stats["early"] = sum(1 for r in ts if r["warning"] == "Erken çıkış")
@@ -657,6 +700,56 @@ def employee_notifications_read():
     if not p: return jsonify({'status':'error','message':'geçersiz giriş'}),401
     q("update notifications set is_read=1 where person_id=%s and audience='personel' and archived=0", (p['id'],))
     return jsonify({'status':'ok'})
+
+@app.route("/admin/bonuses", methods=["GET", "POST"])
+def bonuses():
+    guard = admin_required()
+    if guard: return guard
+    month = request.args.get("month") or now_dt().strftime("%Y-%m")
+    if request.method == "POST":
+        pid=int(request.form.get("person_id") or 0)
+        bdate=request.form.get("bonus_date") or today_str()
+        try: amount=float(request.form.get("amount") or 0)
+        except Exception: amount=0
+        note=request.form.get("note") or ""
+        if not pid or amount<=0:
+            flash("Personel ve geçerli prim tutarı girin.")
+        else:
+            q("""insert into daily_bonuses(person_id,bonus_date,amount,note,created_at)
+                 values(%s,%s,%s,%s,%s)
+                 on conflict(person_id,bonus_date) do update set amount=excluded.amount,note=excluded.note,created_at=excluded.created_at""",
+              (pid,bdate,amount,note,now_str()))
+            person=q("select full_name from personnel where id=%s",(pid,),fetch=True,one=True)
+            notify("Günlük prim", f"{bdate} tarihli {amount:.2f} TL priminiz eklendi.", pid, 'personel')
+            flash(f"{person['full_name'] if person else 'Personel'} için prim kaydedildi.")
+        return redirect(f"/admin/bonuses?month={bdate[:7]}")
+    people=q("select id,full_name,department from personnel where active=1 order by full_name",fetch=True)
+    rows=q("""select b.*,p.full_name,p.department,
+        sum(b.amount) over(partition by b.person_id,substring(b.bonus_date,1,7)) month_total
+        from daily_bonuses b join personnel p on p.id=b.person_id
+        where substring(b.bonus_date,1,7)=%s order by b.bonus_date desc,b.id desc limit 500""",(month,),fetch=True)
+    totals=q("""select p.id,p.full_name,p.department,coalesce(sum(b.amount),0) total
+        from personnel p left join daily_bonuses b on b.person_id=p.id and substring(b.bonus_date,1,7)=%s
+        where p.active=1 group by p.id order by p.full_name""",(month,),fetch=True)
+    return render_template("bonuses.html", title="Günlük Prim", people=people, rows=rows, totals=totals, month=month, today=today_str())
+
+@app.route("/admin/bonuses/<int:bid>/delete", methods=["POST"])
+def delete_bonus(bid):
+    guard=admin_required()
+    if guard:return guard
+    q("delete from daily_bonuses where id=%s",(bid,))
+    flash("Prim kaydı silindi.")
+    return redirect(request.referrer or "/admin/bonuses")
+
+@app.route("/api/employee-bonuses")
+def employee_bonuses():
+    token=val("token")
+    p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
+    if not p:return jsonify({"status":"error","message":"geçersiz giriş"}),401
+    month=val("month", now_dt().strftime("%Y-%m"))
+    rows=q("select id,bonus_date,amount,note,created_at from daily_bonuses where person_id=%s and substring(bonus_date,1,7)=%s order by bonus_date desc,id desc",(p['id'],month),fetch=True)
+    total=sum(float(r.get('amount') or 0) for r in rows)
+    return jsonify({"status":"ok","month":month,"total":total,"bonuses":[{**r,"amount":float(r.get('amount') or 0)} for r in rows]})
 
 @app.route("/admin/salary")
 def salary():
