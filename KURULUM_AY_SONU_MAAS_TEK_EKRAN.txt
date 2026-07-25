@@ -1,0 +1,15 @@
+AY SONU PUANTAJ + MAAŞ TEK EKRAN
+
+1. Bu klasörün içindeki tüm dosyaları GitHub projenizin üzerine yükleyin.
+2. Commit changes yapın ve Render deploy işleminin tamamlanmasını bekleyin.
+3. Yönetici panelinden “Ay Sonu Maaş” menüsünü açın.
+
+HESAP:
+Günlük ücret = Aylık maaş / 30
+Yatırılacak = Aylık maaş - devamsızlık kesintisi - o ayki avans + o ayki prim
+
+Notlar:
+- İçinde bulunulan ayda henüz gelmemiş gelecek günler devamsız sayılmaz.
+- Avanslar ve primler seçilen aya göre toplanır.
+- Maaş Yatırıldı butonu personele tutar içeren bildirim gönderir.
+- Mevcut Neon verileri silinmez. Advances tablosuna created_at alanı otomatik eklenir.

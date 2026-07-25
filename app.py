@@ -140,6 +140,12 @@ def init_db():
         safe_alter(f"alter table personnel add column {col} {typ}")
 
     q("create table if not exists advances(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, note text default '', status text default 'Beklemede')")
+    safe_alter("alter table advances add column created_at text default ''")
+    try:
+        q("update advances set created_at=%s where created_at is null or created_at=''", (now_str(),))
+        q("create index if not exists idx_advances_person_created on advances(person_id,created_at)")
+    except Exception:
+        pass
     q("create table if not exists leaves(id serial primary key, person_id integer references personnel(id) on delete cascade, start_date text not null, end_date text not null, days_count integer default 0, status text default 'İzinli')")
     q("create table if not exists attendance_logs(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, event_time text not null)")
     q("create table if not exists leave_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, start_date text not null, end_date text not null, days_count integer default 0, note text default '', status text default 'Beklemede', created_at text not null)")
@@ -399,22 +405,37 @@ def warning_for(event_type, event_time):
     return ""
 
 def person_summary(pid):
+    month=now_dt().strftime("%Y-%m")
     p = q("""select p.*,
-        coalesce((select sum(a.amount) from advances a where a.person_id=p.id),0) total_advance,
+        coalesce((select sum(a.amount) from advances a where a.person_id=p.id and substring(coalesce(a.created_at,''),1,7)=%s and a.status in ('Onaylandı','Beklemede')),0) total_advance,
         coalesce((select sum(b.amount) from daily_bonuses b where b.person_id=p.id and substring(b.bonus_date,1,7)=%s),0) monthly_bonus
-        from personnel p where p.id=%s""", (now_dt().strftime("%Y-%m"), pid), fetch=True, one=True)
-    if not p:
-        return None
-    salary = float(p.get("salary") or 0)
-    advance = float(p.get("total_advance") or 0)
+        from personnel p where p.id=%s""", (month, month, pid), fetch=True, one=True)
+    if not p: return None
+    days=workdays_in_month(month); today=today_str(); days=[d for d in days if d<=today]
+    custom=q("select day,is_work_day from monthly_shifts where person_id=%s and month=%s",(pid,month),fetch=True)
+    cmap={r['day']:int(r.get('is_work_day') or 0) for r in custom}; days=[d for d in days if cmap.get(d,1)==1]
+    entries=q("select distinct substring(event_time,1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(event_time,1,7)=%s",(pid,month),fetch=True)
+    came={r['d'] for r in entries}
+    leave_days=set(); leaves=q("select start_date,end_date from leaves where person_id=%s and status='İzinli'",(pid,),fetch=True)
+    for lv in leaves:
+        try:
+            d=datetime.strptime(lv['start_date'],'%Y-%m-%d').date(); de=datetime.strptime(lv['end_date'],'%Y-%m-%d').date()
+            while d<=de:
+                iso=d.isoformat()
+                if iso in days: leave_days.add(iso)
+                d+=timedelta(days=1)
+        except Exception: pass
+    absent=len([d for d in days if d not in came and d not in leave_days])
+    salary=float(p.get('salary') or 0); daily=salary/30.0; deduction=daily*absent
+    advance=float(p.get('total_advance') or 0); bonus=float(p.get('monthly_bonus') or 0); payable=max(0.0,salary-deduction-advance+bonus)
     return {
-        "id": p["id"], "full_name": p["full_name"], "department": p["department"],
-        "salary": salary, "total_advance": advance, "remaining_salary": salary - advance, "monthly_bonus": float(p.get("monthly_bonus") or 0),
-        "annual_leave_total": p.get("annual_leave_total") or 0,
-        "annual_leave_used": p.get("annual_leave_used") or 0,
-        "annual_leave_remaining": p.get("annual_leave_remaining") or 0,
-        "phone": p.get("phone") or "", "address": p.get("address") or "", "photo_url": p.get("photo_url") or "",
-        "shift_name": p.get("shift_name") or "Sabah", "shift_start": p.get("shift_start") or "09:00", "shift_end": p.get("shift_end") or "18:00",
+        "id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":salary,
+        "total_advance":advance,"monthly_bonus":bonus,"absent_days":absent,"absence_deduction":deduction,
+        "daily_salary":daily,"remaining_salary":payable,"payable_salary":payable,"salary_month":month,
+        "annual_leave_total":p.get("annual_leave_total") or 0,"annual_leave_used":p.get("annual_leave_used") or 0,
+        "annual_leave_remaining":p.get("annual_leave_remaining") or 0,"phone":p.get("phone") or "",
+        "address":p.get("address") or "","photo_url":p.get("photo_url") or "",
+        "shift_name":p.get("shift_name") or "Sabah","shift_start":p.get("shift_start") or "09:00","shift_end":p.get("shift_end") or "18:00",
     }
 
 def today_status_rows():
@@ -451,40 +472,77 @@ def today_status_rows():
     return out
 
 def monthly_puantaj_rows(month=None):
+    """Ay sonu puantaj + maaş: günlük ücret her zaman aylık maaş / 30."""
     month, start, end = month_bounds(month)
-    workdays = workdays_in_month(month)
-    people = q("select * from personnel where active=1 order by full_name", fetch=True)
-    rows = []
-    for p in people:
-        # Aylık vardiyada izinli/gün dışı işaretlenenleri çıkart
-        custom = q("select day,is_work_day from monthly_shifts where person_id=%s and month=%s", (p["id"], month), fetch=True)
-        custom_map = {c["day"]: int(c.get("is_work_day") or 0) for c in custom}
-        person_workdays = [d for d in workdays if custom_map.get(d, 1) == 1]
-        entries = q("select distinct substring(event_time,1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(event_time,1,7)=%s", (p["id"], month), fetch=True)
-        came = set(r["d"] for r in entries)
-        leaves = q("select start_date,end_date from leaves where person_id=%s and status='İzinli'", (p["id"],), fetch=True)
-        leave_days = set()
-        for lv in leaves:
-            try:
-                ds = datetime.strptime(lv["start_date"], "%Y-%m-%d").date()
-                de = datetime.strptime(lv["end_date"], "%Y-%m-%d").date()
-                d = ds
-                while d <= de:
-                    if d.strftime("%Y-%m") == month and d.isoformat() in person_workdays:
-                        leave_days.add(d.isoformat())
-                    d += timedelta(days=1)
-            except Exception:
-                pass
-        absent = [d for d in person_workdays if d not in came and d not in leave_days]
-        salary = float(p.get("salary") or 0)
-        daily = salary / len(person_workdays) if person_workdays else 0
-        deduction = daily * len(absent)
+    base_days = workdays_in_month(month)
+    today = now_dt().date()
+    try:
+        month_start = datetime.strptime(month + "-01", "%Y-%m-%d").date()
+    except Exception:
+        month_start = today.replace(day=1)
+    # İçinde bulunulan ayda gelecekteki günleri devamsız sayma.
+    if month_start.year == today.year and month_start.month == today.month:
+        base_days = [d for d in base_days if d <= today.isoformat()]
+    elif month_start > today:
+        base_days = []
+
+    people = q("select id,full_name,department,salary,shift_name,shift_start,shift_end from personnel where active=1 order by full_name", fetch=True)
+    if not people:
+        return []
+    ids = [x["id"] for x in people]
+
+    attendance = q("""select person_id,substring(event_time,1,10) d
+        from attendance_logs where event_type='entry' and substring(event_time,1,7)=%s
+        group by person_id,substring(event_time,1,10)""", (month,), fetch=True)
+    came_map = {}
+    for r in attendance:
+        came_map.setdefault(r['person_id'], set()).add(r['d'])
+
+    leaves = q("select person_id,start_date,end_date from leaves where status='İzinli'", fetch=True)
+    leave_map = {pid:set() for pid in ids}
+    for lv in leaves:
+        if lv.get('person_id') not in leave_map: continue
+        try:
+            ds=datetime.strptime(lv['start_date'],'%Y-%m-%d').date(); de=datetime.strptime(lv['end_date'],'%Y-%m-%d').date()
+            d=ds
+            while d<=de:
+                iso=d.isoformat()
+                if d.strftime('%Y-%m')==month and iso in base_days: leave_map[lv['person_id']].add(iso)
+                d += timedelta(days=1)
+        except Exception: pass
+
+    custom_rows = q("select person_id,day,is_work_day from monthly_shifts where month=%s", (month,), fetch=True)
+    custom_map = {}
+    for c in custom_rows:
+        custom_map.setdefault(c['person_id'], {})[c['day']] = int(c.get('is_work_day') or 0)
+
+    advances = q("""select person_id,coalesce(sum(amount),0) total from advances
+        where substring(coalesce(created_at,''),1,7)=%s and status in ('Onaylandı','Beklemede') group by person_id""", (month,), fetch=True)
+    advance_map={r['person_id']:float(r.get('total') or 0) for r in advances}
+    bonuses = q("select person_id,coalesce(sum(amount),0) total from daily_bonuses where substring(bonus_date,1,7)=%s group by person_id", (month,), fetch=True)
+    bonus_map={r['person_id']:float(r.get('total') or 0) for r in bonuses}
+    payments = q("select person_id,amount,created_at from salary_payments where month=%s order by id desc", (month,), fetch=True)
+    payment_map={}
+    for r in payments:
+        payment_map.setdefault(r['person_id'], r)
+
+    rows=[]
+    for person in people:
+        pid=person['id']
+        person_days=[d for d in base_days if custom_map.get(pid,{}).get(d,1)==1]
+        came=came_map.get(pid,set()); leave_days=leave_map.get(pid,set())
+        absent=[d for d in person_days if d not in came and d not in leave_days]
+        salary=float(person.get('salary') or 0); daily=salary/30.0
+        deduction=daily*len(absent); advance=advance_map.get(pid,0.0); bonus=bonus_map.get(pid,0.0)
+        payable=max(0.0, salary-deduction-advance+bonus)
+        payment=payment_map.get(pid)
         rows.append({
-            "id": p["id"], "full_name": p["full_name"], "department": p["department"],
-            "shift_name": p.get("shift_name") or "Sabah", "shift_start": p.get("shift_start") or "09:00", "shift_end": p.get("shift_end") or "18:00",
-            "workdays": len(person_workdays), "came_days": len(came), "leave_days": len(leave_days), "absent_days": len(absent),
-            "absent_list": ", ".join(absent) if absent else "-", "salary": salary, "daily": daily,
-            "deduction": deduction, "net_salary": salary - deduction,
+            'id':pid,'full_name':person['full_name'],'department':person['department'],
+            'shift_name':person.get('shift_name') or 'Sabah','shift_start':person.get('shift_start') or '09:00','shift_end':person.get('shift_end') or '18:00',
+            'workdays':len(person_days),'came_days':len(came),'leave_days':len(leave_days),'absent_days':len(absent),
+            'absent_list':', '.join(absent) if absent else '-', 'salary':salary,'daily':daily,'deduction':deduction,
+            'total_advance':advance,'monthly_bonus':bonus,'net_salary':payable,'payable':payable,
+            'paid':bool(payment),'paid_amount':float(payment.get('amount') or 0) if payment else 0.0,'paid_at':payment.get('created_at') if payment else ''
         })
     return rows
 
@@ -617,7 +675,7 @@ def advances():
     if guard: return guard
     if request.method == "POST":
         pid = int(request.form["person_id"]); amount = float(request.form["amount"] or 0); note = request.form.get("note") or ""
-        q("insert into advances(person_id,amount,note,status) values(%s,%s,%s,'Beklemede')", (pid, amount, note))
+        q("insert into advances(person_id,amount,note,status,created_at) values(%s,%s,%s,'Beklemede',%s)", (pid, amount, note, now_str()))
         p = q("select full_name from personnel where id=%s", (pid,), fetch=True, one=True)
         notify("Yeni avans", f"{p['full_name']} için {amount:.2f} TL avans girildi.", pid)
         flash("Avans kaydedildi.")
@@ -698,7 +756,7 @@ def decide_advance_request(rid, decision):
         flash("Talep bulunamadı veya daha önce sonuçlandı."); return redirect("/admin/advance-requests")
     if decision == 'approve':
         q("update advance_requests set status='Onaylandı',decided_at=%s where id=%s", (now_str(), rid))
-        q("insert into advances(person_id,amount,note,status) values(%s,%s,%s,'Onaylandı')", (req['person_id'], req['amount'], req.get('note') or 'Personel avans talebi'))
+        q("insert into advances(person_id,amount,note,status,created_at) values(%s,%s,%s,'Onaylandı',%s)", (req['person_id'], req['amount'], req.get('note') or 'Personel avans talebi', now_str()))
         notify("Avans onaylandı", f"{float(req['amount']):.2f} TL avans talebiniz onaylandı.", req['person_id'], 'personel')
         flash("Avans talebi onaylandı ve avans geçmişine eklendi.")
     else:
@@ -786,18 +844,21 @@ def employee_bonuses():
 def salary():
     guard = admin_required()
     if guard: return guard
-    rows = q("select p.*,coalesce(sum(a.amount),0) total_advance from personnel p left join advances a on a.person_id=p.id group by p.id order by full_name", fetch=True)
-    return render_template("salary.html", title="Maaşlar", rows=rows)
+    return redirect("/admin/monthly-puantaj")
 
 @app.route("/admin/salary-paid", methods=["POST"])
 def salary_paid():
     guard = admin_required()
     if guard: return guard
     pid = int(request.form["person_id"]); amount = float(request.form.get("amount") or 0); month = request.form.get("month") or now_dt().strftime("%Y-%m")
-    q("insert into salary_payments(person_id,amount,month,note,created_at) values(%s,%s,%s,%s,%s)", (pid, amount, month, request.form.get("note") or "Maaş yatırıldı", now_str()))
+    existing = q("select id from salary_payments where person_id=%s and month=%s order by id desc limit 1", (pid,month), fetch=True, one=True)
+    if existing:
+        q("update salary_payments set amount=%s,note=%s,created_at=%s where id=%s", (amount, request.form.get("note") or "Maaş yatırıldı", now_str(), existing['id']))
+    else:
+        q("insert into salary_payments(person_id,amount,month,note,created_at) values(%s,%s,%s,%s,%s)", (pid, amount, month, request.form.get("note") or "Maaş yatırıldı", now_str()))
     notify("Maaş yatırıldı", f"{month} maaş ödemeniz yatırıldı. Tutar: {amount:.2f} TL", pid)
     flash("Maaş yatırıldı bildirimi gönderildi.")
-    return redirect("/admin/salary")
+    return redirect(f"/admin/monthly-puantaj?month={month}")
 
 @app.route("/admin/attendance")
 def attendance():
@@ -917,8 +978,8 @@ def monthly_puantaj_pdf():
     if guard: return guard
     month = request.args.get("month") or now_dt().strftime("%Y-%m")
     rows = monthly_puantaj_rows(month)
-    data = [[r["full_name"], r["department"], r["shift_name"], str(r["workdays"]), str(r["came_days"]), str(r["leave_days"]), str(r["absent_days"]), r["absent_list"], f"{r['deduction']:.2f} TL", f"{r['net_salary']:.2f} TL"] for r in rows]
-    return make_pdf_response(f"ay_sonu_puantaj_{month}.pdf", "Ay Sonu Puantaj", f"Ay: {month} · Türkçe karakter uyumlu PDF", ["Personel", "Bölüm", "Vardiya", "İş Günü", "Geldi", "İzin", "Gelmedi", "Gelmeyen Tarihler", "Kesinti", "Net Maaş"], data)
+    data = [[r["full_name"], r["department"], str(r["came_days"]), str(r["leave_days"]), str(r["absent_days"]), f"{r['salary']:.2f} TL", f"{r['deduction']:.2f} TL", f"{r['total_advance']:.2f} TL", f"{r['monthly_bonus']:.2f} TL", f"{r['payable']:.2f} TL", "Ödendi" if r['paid'] else "Bekliyor"] for r in rows]
+    return make_pdf_response(f"ay_sonu_maas_{month}.pdf", "Ay Sonu Puantaj ve Maaş", f"Ay: {month} · Günlük ücret aylık maaş / 30", ["Personel", "Bölüm", "Geldi", "İzin", "Gelmedi", "Maaş", "Devamsızlık", "Avans", "Prim", "Yatırılacak", "Durum"], data)
 
 @app.route("/admin/payroll/<int:pid>")
 def payroll(pid):
@@ -931,9 +992,9 @@ def payroll(pid):
         flash("Personel bulunamadı."); return redirect("/admin/monthly-puantaj")
     data = [
         ["Personel", r["full_name"]], ["Bölüm", r["department"]], ["Ay", month], ["Vardiya", f"{r['shift_name']} {r['shift_start']}-{r['shift_end']}"],
-        ["İş Günü", str(r["workdays"])], ["Geldiği Gün", str(r["came_days"])], ["İzinli Gün", str(r["leave_days"])],
+        ["Hesaplama Esası", "Aylık maaş / 30"], ["Geldiği Gün", str(r["came_days"])], ["İzinli Gün", str(r["leave_days"])],
         ["Gelmediği Gün", str(r["absent_days"])], ["Gelmeyen Tarihler", r["absent_list"]], ["Aylık Maaş", f"{r['salary']:.2f} TL"],
-        ["Günlük Kesinti", f"{r['daily']:.2f} TL"], ["Toplam Kesinti", f"{r['deduction']:.2f} TL"], ["Net Maaş", f"{r['net_salary']:.2f} TL"],
+        ["Günlük Ücret", f"{r['daily']:.2f} TL"], ["Devamsızlık Kesintisi", f"{r['deduction']:.2f} TL"], ["Avans", f"{r['total_advance']:.2f} TL"], ["Prim", f"{r['monthly_bonus']:.2f} TL"], ["Yatırılacak", f"{r['payable']:.2f} TL"], ["Durum", "Ödendi" if r["paid"] else "Bekliyor"],
     ]
     return make_pdf_response(f"bordro_{r['full_name'].replace(' ','_')}_{month}.pdf", "Personel Bordro", f"Oluşturma: {now_str()}", ["Alan", "Bilgi"], data)
 
