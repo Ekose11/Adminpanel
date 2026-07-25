@@ -1,0 +1,15 @@
+{
+  "name":"Personel Mobil",
+  "short_name":"Personel",
+  "description":"QR giriş çıkış, izin talebi ve personel işlemleri",
+  "start_url":"/personel/",
+  "scope":"/personel/",
+  "display":"standalone",
+  "background_color":"#071426",
+  "theme_color":"#071426",
+  "orientation":"portrait-primary",
+  "icons":[
+    {"src":"/static/personel-pwa/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"/static/personel-pwa/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}

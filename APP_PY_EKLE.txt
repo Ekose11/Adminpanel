@@ -1,0 +1,10 @@
+Mevcut app.py dosyanızda importların altına:
+
+from personel_pwa_routes import personel_pwa
+
+Flask uygulaması oluşturulduktan sonra, örneğin app = Flask(__name__) satırının altına:
+
+app.register_blueprint(personel_pwa)
+
+Bu paketteki templates ve static klasörlerini server projesinin ana klasörüne kopyalayın.
+personel_pwa_routes.py dosyasını app.py ile aynı klasöre koyun.
