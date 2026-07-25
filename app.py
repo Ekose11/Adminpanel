@@ -111,6 +111,15 @@ def init_db():
     q("create table if not exists notifications(id serial primary key, person_id integer references personnel(id) on delete cascade, event_type text not null, message text not null, created_at text not null, is_read integer default 0, audience text default 'personel', archived integer default 0)")
     safe_alter("alter table notifications add column audience text default 'personel'")
     safe_alter("alter table notifications add column archived integer default 0")
+    safe_alter("alter table notifications add column delivered_at text default ''")
+    safe_alter("alter table notifications add column delivery_count integer default 0")
+    try:
+        q("create index if not exists idx_notifications_person_pending on notifications(person_id,audience,archived,delivered_at,id)")
+        q("create index if not exists idx_notifications_admin_unread on notifications(audience,archived,is_read,id)")
+        q("create index if not exists idx_leave_requests_status on leave_requests(status)")
+        q("create index if not exists idx_advance_requests_status on advance_requests(status)")
+    except Exception:
+        pass
     q("create table if not exists advance_requests(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, note text default '', status text default 'Beklemede', created_at text not null, decided_at text default '')")
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
     q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, month text not null, note text default '', created_at text not null)")
@@ -166,10 +175,12 @@ def inject_badges():
     if not admin_ok():
         return {}
     try:
-        leave_count = q("select count(*) c from leave_requests where status='Beklemede'", fetch=True, one=True)["c"]
-        advance_count = q("select count(*) c from advance_requests where status='Beklemede'", fetch=True, one=True)["c"]
-        notification_count = q("select count(*) c from notifications where audience='admin' and is_read=0 and archived=0", fetch=True, one=True)["c"]
-        return {'leave_badge': leave_count, 'advance_badge': advance_count, 'notification_badge': notification_count}
+        counts = q("""select
+            (select count(*) from leave_requests where status='Beklemede') leave_badge,
+            (select count(*) from advance_requests where status='Beklemede') advance_badge,
+            (select count(*) from notifications where audience='admin' and is_read=0 and archived=0) notification_badge
+        """, fetch=True, one=True)
+        return counts or {'leave_badge': 0, 'advance_badge': 0, 'notification_badge': 0}
     except Exception:
         return {'leave_badge': 0, 'advance_badge': 0, 'notification_badge': 0}
 
@@ -573,11 +584,18 @@ def decide_advance_request(rid, decision):
 def admin_live_status():
     guard = admin_required()
     if guard: return jsonify({'status':'unauthorized'}), 401
-    leave_count = q("select count(*) c from leave_requests where status='Beklemede'", fetch=True, one=True)['c']
-    advance_count = q("select count(*) c from advance_requests where status='Beklemede'", fetch=True, one=True)['c']
-    notification_count = q("select count(*) c from notifications where audience='admin' and is_read=0 and archived=0", fetch=True, one=True)['c']
-    latest = q("select id,event_type,message,created_at from notifications where audience='admin' and archived=0 order by id desc limit 1", fetch=True, one=True)
-    return jsonify({'status':'ok','leave_count':leave_count,'advance_count':advance_count,'notification_count':notification_count,'latest':latest})
+    data = q("""select
+        (select count(*) from leave_requests where status='Beklemede') leave_count,
+        (select count(*) from advance_requests where status='Beklemede') advance_count,
+        (select count(*) from notifications where audience='admin' and is_read=0 and archived=0) notification_count,
+        (select id from notifications where audience='admin' and archived=0 order by id desc limit 1) latest_id,
+        (select event_type from notifications where audience='admin' and archived=0 order by id desc limit 1) latest_type,
+        (select message from notifications where audience='admin' and archived=0 order by id desc limit 1) latest_message
+    """, fetch=True, one=True) or {}
+    latest = None
+    if data.get('latest_id'):
+        latest = {'id': data['latest_id'], 'event_type': data.get('latest_type'), 'message': data.get('latest_message')}
+    return jsonify({'status':'ok','leave_count':data.get('leave_count',0),'advance_count':data.get('advance_count',0),'notification_count':data.get('notification_count',0),'latest':latest})
 
 @app.route("/api/employee-notifications/read", methods=["POST"])
 def employee_notifications_read():
@@ -956,6 +974,40 @@ def employee_advance_requests():
         return jsonify({"status":"error","message":"geçersiz giriş"}), 401
     rows = q("select id,amount,note,status,created_at,decided_at from advance_requests where person_id=%s order by id desc limit 50", (p["id"],), fetch=True)
     return jsonify({"status":"ok","requests":[{**r,"amount":float(r.get('amount') or 0)} for r in rows]})
+
+
+@app.route("/api/employee-notifications/pending")
+def employee_notifications_pending():
+    """Yeni bildirimleri bir kez teslim eder. Aynı kayıt sonraki kontrolde dönmez."""
+    token = val("token")
+    conn = db()
+    try:
+        cur = conn.cursor()
+        cur.execute("select id from personnel where token=%s and active=1", (token,))
+        person = cur.fetchone()
+        if not person:
+            conn.rollback()
+            return jsonify({"status":"error","message":"geçersiz giriş"}), 401
+        person_id = person[0]
+        cur.execute("""select id,event_type,message,created_at from notifications
+            where person_id=%s and audience='personel' and archived=0
+              and coalesce(delivered_at,'')=''
+            order by id asc limit 20 for update skip locked""", (person_id,))
+        raw = cur.fetchall()
+        rows = [{"id":r[0],"event_type":r[1],"message":r[2],"created_at":r[3]} for r in raw]
+        if rows:
+            ids = [r["id"] for r in rows]
+            placeholders = ','.join(['%s'] * len(ids))
+            cur.execute(f"update notifications set delivered_at=%s,delivery_count=coalesce(delivery_count,0)+1 where id in ({placeholders})", (now_str(), *ids))
+        conn.commit()
+        return jsonify({"status":"ok","notifications":rows})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        try: cur.close()
+        except Exception: pass
+        conn.close()
 
 @app.route("/api/employee-notifications", methods=["GET", "POST"])
 def employee_notifications():

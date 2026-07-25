@@ -33,8 +33,33 @@ async function sendAdvance(){const amount=$('advanceAmount').value,note=$('advan
 async function loadAdvanceRequests(){const box=$('advanceRequestsList');if(!box)return;box.innerHTML='<div class="empty">Talepler yükleniyor…</div>';try{const d=await request('/api/employee-advance-requests?token='+encodeURIComponent(token));const a=d.requests||[];box.innerHTML=a.length?a.map(x=>`<article class="list-card"><h3>${money(x.amount)}</h3><p class="${statusClass(x.status)}">${escapeHtml(x.status||'Beklemede')}</p><p>${escapeHtml(x.note||'-')}</p><small>${escapeHtml(x.created_at||'')}</small></article>`).join(''):'<div class="empty">Henüz avans talebi yok.</div>'}catch(e){box.innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'}}
 function updateNotificationBadge(n){const el=$('personNotificationBadge');if(!el)return;el.textContent=n;el.classList.toggle('hidden',!n)}
 function notificationSound(){try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;const c=new C(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.setValueAtTime(.12,c.currentTime);g.gain.exponentialRampToValueAtTime(.001,c.currentTime+.35);o.start();o.stop(c.currentTime+.35)}catch(e){}if(navigator.vibrate)navigator.vibrate([120,80,120])}
-async function pollNotifications(){if(!token)return;try{const d=await request('/api/employee-notifications?token='+encodeURIComponent(token));const a=d.notifications||[], unread=a.filter(x=>Number(x.is_read||0)===0);updateNotificationBadge(unread.length);const latest=a[0];if(latest&&Number(latest.id)>lastNotificationId){if(lastNotificationId>0){notificationSound();toast(latest.event_type+': '+latest.message);if('Notification'in window&&Notification.permission==='granted')new Notification(latest.event_type,{body:latest.message,icon:'/static/personel-pwa/icons/icon-192.png'})}lastNotificationId=Number(latest.id);localStorage.setItem('personel_last_notification_id',String(lastNotificationId))}}catch(e){}}
-function startNotificationPolling(){if(notificationPollStarted)return;notificationPollStarted=true;if('Notification'in window&&Notification.permission==='default'){document.addEventListener('click',()=>Notification.requestPermission(),{once:true})}pollNotifications();setInterval(pollNotifications,5000)}
+async function pollNotifications(){
+  if(!token||document.hidden)return;
+  try{
+    const d=await request('/api/employee-notifications/pending?token='+encodeURIComponent(token));
+    const items=d.notifications||[];
+    if(items.length){
+      const latest=items[items.length-1];
+      notificationSound();
+      toast(latest.event_type+': '+latest.message);
+      if('Notification'in window&&Notification.permission==='granted'){
+        new Notification(latest.event_type,{body:latest.message,icon:'/static/personel-pwa/icons/icon-192.png',tag:'boztek-'+latest.id});
+      }
+      loadNotificationBadge();
+    }
+  }catch(e){}
+}
+async function loadNotificationBadge(){
+  if(!token)return;
+  try{const d=await request('/api/employee-notifications?token='+encodeURIComponent(token));updateNotificationBadge((d.notifications||[]).filter(x=>Number(x.is_read||0)===0).length)}catch(e){}
+}
+function startNotificationPolling(){
+  if(notificationPollStarted)return;notificationPollStarted=true;
+  if('Notification'in window&&Notification.permission==='default'){document.addEventListener('click',()=>Notification.requestPermission(),{once:true})}
+  pollNotifications();loadNotificationBadge();
+  setInterval(pollNotifications,20000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)pollNotifications()});
+}
 
 async function loadAdvances(){const box=$('advancesList');box.innerHTML='<div class="empty">Avanslar yükleniyor…</div>';try{const d=await request('/api/employee-advances?token='+encodeURIComponent(token));const a=d.advances||[];box.innerHTML=a.length?a.map(x=>`<article class="list-card"><h3>${money(x.amount)}</h3><p>${escapeHtml(x.status||'')}</p><small>${escapeHtml(x.created_at||x.date||'')}</small></article>`).join(''):'<div class="empty">Avans kaydı bulunamadı.</div>'}catch(e){box.innerHTML='<div class="empty">'+escapeHtml(e.message)+'</div>'}}
 function fillProfile(){$('profilePhone').value=person.phone||'';$('profileAddress').value=person.address||''}

@@ -1,4 +1,4 @@
-const CACHE='personel-pwa-v1';
+const CACHE='personel-pwa-v2-hizli-bildirim';
 const ASSETS=['/personel/','/static/personel-pwa/app.css','/static/personel-pwa/app.js','/static/personel-pwa/icons/icon-192.png','/static/personel-pwa/icons/icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));

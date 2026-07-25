@@ -1,0 +1,14 @@
+BİLDİRİM TEKRARI VE HIZ DÜZELTMESİ
+
+1) Bu klasörün içeriğini GitHub deponuzdaki mevcut dosyaların üzerine yükleyin.
+2) Commit changes yapın. Render otomatik deploy edecektir.
+3) Deploy tamamlandıktan sonra iPhone/Android uygulamasını tamamen kapatıp yeniden açın.
+4) Eski JavaScript önbelleği kalırsa Safari/Chrome site verilerini temizleyin veya PWA simgesini kaldırıp yeniden Ana Ekrana Ekleyin.
+
+Düzeltmeler:
+- Her personel bildirimi veritabanında delivered_at ile yalnızca bir kez teslim edilir.
+- 5 saniyelik sorgu 20 saniyeye çıkarıldı ve sekme arka plandayken durur.
+- Yönetici paneli sorgusu 15 saniyeye çıkarıldı ve tek SQL isteğine indirildi.
+- Sayfa açıkken her saniye sunucu saati sorgulama kaldırıldı.
+- Performans için veritabanı indeksleri otomatik oluşturulur.
+- Mevcut personel ve kayıtlar silinmez.
