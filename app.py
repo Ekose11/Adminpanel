@@ -189,7 +189,21 @@ def init_db():
     except Exception:
         pass
     q("create table if not exists monthly_shifts(id serial primary key, person_id integer references personnel(id) on delete cascade, month text not null, day text not null, shift_name text not null, shift_start text not null, shift_end text not null, is_work_day integer default 1)")
-    q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric not null, month text not null, note text default '', created_at text not null)")
+    q("create table if not exists salary_payments(id serial primary key, person_id integer references personnel(id) on delete cascade, amount numeric default 0, month text default '', note text default '', created_at text default '')")
+    # Eski Neon kurulumlarında salary_payments tablosu farklı sütunlarla kalmış olabilir.
+    # Eksik sütunları veriyi silmeden tamamla.
+    for col, typ in [
+        ("person_id", "integer"),
+        ("amount", "numeric default 0"),
+        ("month", "text default ''"),
+        ("note", "text default ''"),
+        ("created_at", "text default ''"),
+    ]:
+        safe_alter(f"alter table salary_payments add column {col} {typ}")
+    try:
+        q("create index if not exists idx_salary_payments_person_month on salary_payments(person_id,month,id desc)")
+    except Exception:
+        pass
     q("""create table if not exists daily_bonuses(
         id serial primary key,
         person_id integer references personnel(id) on delete cascade,
@@ -864,15 +878,54 @@ def salary():
 @app.route("/admin/salary-paid", methods=["POST"])
 def salary_paid():
     guard = admin_required()
-    if guard: return guard
-    pid = int(request.form["person_id"]); amount = float(request.form.get("amount") or 0); month = request.form.get("month") or now_dt().strftime("%Y-%m")
-    existing = q("select id from salary_payments where person_id=%s and month=%s order by id desc limit 1", (pid,month), fetch=True, one=True)
-    if existing:
-        q("update salary_payments set amount=%s,note=%s,created_at=%s where id=%s", (amount, request.form.get("note") or "Maaş yatırıldı", now_str(), existing['id']))
-    else:
-        q("insert into salary_payments(person_id,amount,month,note,created_at) values(%s,%s,%s,%s,%s)", (pid, amount, month, request.form.get("note") or "Maaş yatırıldı", now_str()))
-    notify("Maaş yatırıldı", f"{month} maaş ödemeniz yatırıldı. Tutar: {amount:.2f} TL", pid)
-    flash("Maaş yatırıldı bildirimi gönderildi.")
+    if guard:
+        return guard
+
+    month = (request.form.get("month") or now_dt().strftime("%Y-%m")).strip()
+    try:
+        pid = int(request.form.get("person_id") or 0)
+        raw_amount = str(request.form.get("amount") or "0").strip().replace(",", ".")
+        amount = round(float(raw_amount), 2)
+        if pid <= 0 or amount < 0:
+            raise ValueError("Geçersiz personel veya tutar")
+        # Hatalı/uydurma personel kimliği ile kayıt oluşmasını engelle.
+        person = q("select id,full_name from personnel where id=%s and active=1", (pid,), fetch=True, one=True)
+        if not person:
+            raise ValueError("Personel bulunamadı")
+
+        # Eski veritabanlarında eksik kalmış ödeme sütunlarını çalışma anında da tamamla.
+        for col, typ in [
+            ("person_id", "integer"), ("amount", "numeric default 0"),
+            ("month", "text default ''"), ("note", "text default ''"),
+            ("created_at", "text default ''")
+        ]:
+            safe_alter(f"alter table salary_payments add column {col} {typ}")
+
+        existing = q("select id from salary_payments where person_id=%s and cast(month as text)=%s order by id desc limit 1", (pid, month), fetch=True, one=True)
+        note = request.form.get("note") or "Maaş yatırıldı"
+        if existing:
+            q("update salary_payments set amount=%s,month=%s,note=%s,created_at=%s where id=%s", (amount, month, note, now_str(), existing["id"]))
+        else:
+            q("insert into salary_payments(person_id,amount,month,note,created_at) values(%s,%s,%s,%s,%s)", (pid, amount, month, note, now_str()))
+
+        # Bildirim tablosu eskiyse ödeme kaydını başarısız sayma; bildirim ayrı denenir.
+        notification_sent = True
+        try:
+            notify("Maaş yatırıldı", f"{month} maaş ödemeniz yatırıldı. Tutar: {amount:.2f} TL", pid)
+        except Exception as notify_error:
+            notification_sent = False
+            app.logger.exception("Maaş bildirimi gönderilemedi: %s", notify_error)
+
+        if notification_sent:
+            flash(f"{person['full_name']} için {amount:.2f} TL maaş ödendi olarak işaretlendi ve bildirim gönderildi.")
+        else:
+            flash(f"{person['full_name']} için {amount:.2f} TL maaş ödendi olarak işaretlendi; bildirim daha sonra tekrar denenebilir.")
+    except (ValueError, TypeError) as exc:
+        flash(f"Maaş kaydı yapılamadı: {exc}")
+    except Exception as exc:
+        app.logger.exception("Maaş ödendi işlemi hatası: %s", exc)
+        flash("Maaş kaydı sırasında veritabanı hatası oluştu. Ödeme kaydı oluşturulamadı.")
+
     return redirect(f"/admin/monthly-puantaj?month={month}")
 
 @app.route("/admin/attendance")
