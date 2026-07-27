@@ -22,8 +22,8 @@ from reportlab.lib.units import mm
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "personel-premium-secret")
 DATABASE_URL = os.environ.get("DATABASE_URL")
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "eren")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "1234")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "BOZTEK")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "5109")
 READY = False
 PUSH_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="push")
 LAST_NOTIFICATION_CLEANUP_DATE = None
@@ -414,7 +414,7 @@ def person_summary(pid):
     days=workdays_in_month(month); today=today_str(); days=[d for d in days if d<=today]
     custom=q("select day,is_work_day from monthly_shifts where person_id=%s and month=%s",(pid,month),fetch=True)
     cmap={r['day']:int(r.get('is_work_day') or 0) for r in custom}; days=[d for d in days if cmap.get(d,1)==1]
-    entries=q("select distinct substring(event_time,1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(event_time,1,7)=%s",(pid,month),fetch=True)
+    entries=q("select distinct substring(cast(event_time as text),1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(cast(event_time as text),1,7)=%s",(pid,month),fetch=True)
     came={r['d'] for r in entries}
     leave_days=set(); leaves=q("select start_date,end_date from leaves where person_id=%s and status='İzinli'",(pid,),fetch=True)
     for lv in leaves:
@@ -491,8 +491,8 @@ def monthly_puantaj_rows(month=None):
         return []
     ids = [x["id"] for x in people]
 
-    attendance = q("""select person_id,substring(event_time,1,10) d
-        from attendance_logs where event_type='entry' and substring(event_time,1,7)=%s
+    attendance = q("""select person_id,substring(cast(event_time as text),1,10) d
+        from attendance_logs where event_type='entry' and substring(cast(event_time as text),1,7)=%s
         group by person_id,substring(event_time,1,10)""", (month,), fetch=True)
     came_map = {}
     for r in attendance:
@@ -511,17 +511,33 @@ def monthly_puantaj_rows(month=None):
                 d += timedelta(days=1)
         except Exception: pass
 
-    custom_rows = q("select person_id,day,is_work_day from monthly_shifts where month=%s", (month,), fetch=True)
+    try:
+        custom_rows = q("select person_id,cast(day as text) day,is_work_day from monthly_shifts where month=%s", (month,), fetch=True)
+    except Exception:
+        custom_rows = []
     custom_map = {}
     for c in custom_rows:
-        custom_map.setdefault(c['person_id'], {})[c['day']] = int(c.get('is_work_day') or 0)
+        custom_map.setdefault(c['person_id'], {})[str(c['day'])[:10]] = int(c.get('is_work_day') or 0)
 
-    advances = q("""select person_id,coalesce(sum(amount),0) total from advances
-        where substring(coalesce(created_at,''),1,7)=%s and status in ('Onaylandı','Beklemede') group by person_id""", (month,), fetch=True)
+    try:
+        advances = q("""select person_id,coalesce(sum(amount),0) total from advances
+            where substring(coalesce(cast(created_at as text),''),1,7)=%s and status in ('Onaylandı','Beklemede') group by person_id""", (month,), fetch=True)
+    except Exception:
+        # Eski advances tablosunda created_at yoksa tüm onaylı/bekleyen avansları göster.
+        try:
+            advances = q("select person_id,coalesce(sum(amount),0) total from advances where status in ('Onaylandı','Beklemede') group by person_id", fetch=True)
+        except Exception:
+            advances = []
     advance_map={r['person_id']:float(r.get('total') or 0) for r in advances}
-    bonuses = q("select person_id,coalesce(sum(amount),0) total from daily_bonuses where substring(bonus_date,1,7)=%s group by person_id", (month,), fetch=True)
+    try:
+        bonuses = q("select person_id,coalesce(sum(amount),0) total from daily_bonuses where substring(cast(bonus_date as text),1,7)=%s group by person_id", (month,), fetch=True)
+    except Exception:
+        bonuses = []
     bonus_map={r['person_id']:float(r.get('total') or 0) for r in bonuses}
-    payments = q("select person_id,amount,created_at from salary_payments where month=%s order by id desc", (month,), fetch=True)
+    try:
+        payments = q("select person_id,amount,cast(created_at as text) created_at from salary_payments where month=%s order by id desc", (month,), fetch=True)
+    except Exception:
+        payments = []
     payment_map={}
     for r in payments:
         payment_map.setdefault(r['person_id'], r)
@@ -588,8 +604,7 @@ def login():
     if request.method == "POST":
         u = request.form.get("username")
         pw = request.form.get("password")
-        # Eski giriş de çalışsın, yeni giriş de çalışsın.
-        if (u == ADMIN_USERNAME and pw == ADMIN_PASSWORD) or (u == "saban" and pw == "5109") or (u == "eren" and pw == "1234"):
+        if u == ADMIN_USERNAME and pw == ADMIN_PASSWORD:
             session["admin_ok"] = True
             return redirect("/admin/dashboard")
         flash("Hatalı kullanıcı adı veya şifre")
@@ -836,7 +851,7 @@ def employee_bonuses():
     p=q("select id from personnel where token=%s and active=1",(token,),fetch=True,one=True)
     if not p:return jsonify({"status":"error","message":"geçersiz giriş"}),401
     month=val("month", now_dt().strftime("%Y-%m"))
-    rows=q("select id,bonus_date,amount,note,created_at from daily_bonuses where person_id=%s and substring(bonus_date,1,7)=%s order by bonus_date desc,id desc",(p['id'],month),fetch=True)
+    rows=q("select id,bonus_date,amount,note,created_at from daily_bonuses where person_id=%s and substring(cast(bonus_date as text),1,7)=%s order by bonus_date desc,id desc",(p['id'],month),fetch=True)
     total=sum(float(r.get('amount') or 0) for r in rows)
     return jsonify({"status":"ok","month":month,"total":total,"bonuses":[{**r,"amount":float(r.get('amount') or 0)} for r in rows]})
 
