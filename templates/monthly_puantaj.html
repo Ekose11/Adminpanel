@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero"><div><div class="eyebrow">Ay Sonu</div><h1>Puantaj ve Maaş</h1><p>Maaş, devamsızlık, avans ve prim tek ekranda hesaplanır. Günlük ücret aylık maaşın 30'a bölünmesiyle bulunur.</p></div></section>
+<section class="hero"><div><div class="eyebrow">Ay Sonu</div><h1>Puantaj ve Maaş</h1><p>Maaş, devamsızlık ve avans tek ekranda hesaplanır. Günlük primler maaş hesabına dahil edilmez. Günlük ücret aylık maaşın 30'a bölünmesiyle bulunur.</p></div></section>
 
 <div class="card">
   <form method="get" class="form-grid compact">
@@ -12,7 +12,7 @@
 <div class="card payroll-wrap">
   <div class="payroll-table-wrap">
   <table class="table payroll-table">
-    <thead><tr><th>Personel</th><th>Geldi</th><th>İzin</th><th>Gelmedi</th><th>Maaş</th><th>Kesinti</th><th>Avans</th><th>Prim</th><th>Yatırılacak</th><th>Durum / İşlem</th></tr></thead>
+    <thead><tr><th>Personel</th><th>Geldi</th><th>İzin</th><th>Gelmedi</th><th>Maaş</th><th>Kesinti</th><th>Avans</th><th>Yatırılacak</th><th>Durum / İşlem</th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
@@ -23,7 +23,6 @@
       <td data-label="Maaş">{{'%.2f'|format(r.salary)}} TL<br><small>Günlük: {{'%.2f'|format(r.daily)}} TL</small></td>
       <td data-label="Kesinti" class="money-minus">-{{'%.2f'|format(r.deduction)}} TL</td>
       <td data-label="Avans" class="money-minus">-{{'%.2f'|format(r.total_advance)}} TL</td>
-      <td data-label="Prim" class="money-plus">+{{'%.2f'|format(r.monthly_bonus)}} TL</td>
       <td data-label="Yatırılacak"><strong class="payable">{{'%.2f'|format(r.payable)}} TL</strong></td>
       <td data-label="Durum / İşlem">
         {% if r.paid %}<span class="pay-status paid">✓ Ödendi</span><small>{{r.paid_at}}</small>{% else %}<span class="pay-status waiting">Bekliyor</span>{% endif %}
@@ -42,7 +41,7 @@
   </div>
 </div>
 <style>
-.payroll-table-wrap{overflow-x:auto}.payroll-table{min-width:1120px}.money-minus{color:#b91c1c;font-weight:700}.money-plus{color:#047857;font-weight:700}.payable{font-size:1.08rem;color:#0f2a4a}.pay-status{display:block;width:max-content;padding:5px 9px;border-radius:999px;font-weight:800;margin-bottom:6px}.pay-status.paid{background:#dcfce7;color:#166534}.pay-status.waiting{background:#fef3c7;color:#92400e}.pay-actions{display:flex;gap:6px;flex-wrap:wrap}.mini{padding:7px 10px;font-size:12px}.pay-actions form{margin:0}
+.payroll-table-wrap{overflow-x:auto}.payroll-table{min-width:1020px}.money-minus{color:#b91c1c;font-weight:700}.payable{font-size:1.08rem;color:#0f2a4a}.pay-status{display:block;width:max-content;padding:5px 9px;border-radius:999px;font-weight:800;margin-bottom:6px}.pay-status.paid{background:#dcfce7;color:#166534}.pay-status.waiting{background:#fef3c7;color:#92400e}.pay-actions{display:flex;gap:6px;flex-wrap:wrap}.mini{padding:7px 10px;font-size:12px}.pay-actions form{margin:0}
 @media(max-width:760px){.payroll-wrap{padding:8px;background:transparent;box-shadow:none}.payroll-table-wrap{overflow:visible}.payroll-table{min-width:0;display:block}.payroll-table thead{display:none}.payroll-table tbody,.payroll-table tr,.payroll-table td{display:block;width:100%}.payroll-table tr{background:#fff;border-radius:16px;padding:13px;margin-bottom:12px;box-shadow:0 8px 24px rgba(15,42,74,.08)}.payroll-table td{border:0!important;padding:7px 0 7px 45%;position:relative;min-height:32px;text-align:right}.payroll-table td:before{content:attr(data-label);position:absolute;left:0;top:7px;width:42%;text-align:left;font-weight:700;color:#64748b}.pay-actions{justify-content:flex-end}.pay-status{margin-left:auto}.payable{font-size:1.3rem}}
 </style>
 {% endblock %}

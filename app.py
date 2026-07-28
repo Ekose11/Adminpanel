@@ -441,7 +441,7 @@ def person_summary(pid):
         except Exception: pass
     absent=len([d for d in days if d not in came and d not in leave_days])
     salary=float(p.get('salary') or 0); daily=salary/30.0; deduction=daily*absent
-    advance=float(p.get('total_advance') or 0); bonus=float(p.get('monthly_bonus') or 0); payable=max(0.0,salary-deduction-advance+bonus)
+    advance=float(p.get('total_advance') or 0); bonus=float(p.get('monthly_bonus') or 0); payable=max(0.0,salary-deduction-advance)
     return {
         "id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":salary,
         "total_advance":advance,"monthly_bonus":bonus,"absent_days":absent,"absence_deduction":deduction,
@@ -564,7 +564,7 @@ def monthly_puantaj_rows(month=None):
         absent=[d for d in person_days if d not in came and d not in leave_days]
         salary=float(person.get('salary') or 0); daily=salary/30.0
         deduction=daily*len(absent); advance=advance_map.get(pid,0.0); bonus=bonus_map.get(pid,0.0)
-        payable=max(0.0, salary-deduction-advance+bonus)
+        payable=max(0.0, salary-deduction-advance)
         payment=payment_map.get(pid)
         rows.append({
             'id':pid,'full_name':person['full_name'],'department':person['department'],
@@ -1046,8 +1046,8 @@ def monthly_puantaj_pdf():
     if guard: return guard
     month = request.args.get("month") or now_dt().strftime("%Y-%m")
     rows = monthly_puantaj_rows(month)
-    data = [[r["full_name"], r["department"], str(r["came_days"]), str(r["leave_days"]), str(r["absent_days"]), f"{r['salary']:.2f} TL", f"{r['deduction']:.2f} TL", f"{r['total_advance']:.2f} TL", f"{r['monthly_bonus']:.2f} TL", f"{r['payable']:.2f} TL", "Ödendi" if r['paid'] else "Bekliyor"] for r in rows]
-    return make_pdf_response(f"ay_sonu_maas_{month}.pdf", "Ay Sonu Puantaj ve Maaş", f"Ay: {month} · Günlük ücret aylık maaş / 30", ["Personel", "Bölüm", "Geldi", "İzin", "Gelmedi", "Maaş", "Devamsızlık", "Avans", "Prim", "Yatırılacak", "Durum"], data)
+    data = [[r["full_name"], r["department"], str(r["came_days"]), str(r["leave_days"]), str(r["absent_days"]), f"{r['salary']:.2f} TL", f"{r['deduction']:.2f} TL", f"{r['total_advance']:.2f} TL", f"{r['payable']:.2f} TL", "Ödendi" if r['paid'] else "Bekliyor"] for r in rows]
+    return make_pdf_response(f"ay_sonu_maas_{month}.pdf", "Ay Sonu Puantaj ve Maaş", f"Ay: {month} · Günlük ücret aylık maaş / 30", ["Personel", "Bölüm", "Geldi", "İzin", "Gelmedi", "Maaş", "Devamsızlık", "Avans", "Yatırılacak", "Durum"], data)
 
 @app.route("/admin/payroll/<int:pid>")
 def payroll(pid):
@@ -1062,7 +1062,7 @@ def payroll(pid):
         ["Personel", r["full_name"]], ["Bölüm", r["department"]], ["Ay", month], ["Vardiya", f"{r['shift_name']} {r['shift_start']}-{r['shift_end']}"],
         ["Hesaplama Esası", "Aylık maaş / 30"], ["Geldiği Gün", str(r["came_days"])], ["İzinli Gün", str(r["leave_days"])],
         ["Gelmediği Gün", str(r["absent_days"])], ["Gelmeyen Tarihler", r["absent_list"]], ["Aylık Maaş", f"{r['salary']:.2f} TL"],
-        ["Günlük Ücret", f"{r['daily']:.2f} TL"], ["Devamsızlık Kesintisi", f"{r['deduction']:.2f} TL"], ["Avans", f"{r['total_advance']:.2f} TL"], ["Prim", f"{r['monthly_bonus']:.2f} TL"], ["Yatırılacak", f"{r['payable']:.2f} TL"], ["Durum", "Ödendi" if r["paid"] else "Bekliyor"],
+        ["Günlük Ücret", f"{r['daily']:.2f} TL"], ["Devamsızlık Kesintisi", f"{r['deduction']:.2f} TL"], ["Avans", f"{r['total_advance']:.2f} TL"], ["Yatırılacak", f"{r['payable']:.2f} TL"], ["Durum", "Ödendi" if r["paid"] else "Bekliyor"],
     ]
     return make_pdf_response(f"bordro_{r['full_name'].replace(' ','_')}_{month}.pdf", "Personel Bordro", f"Oluşturma: {now_str()}", ["Alan", "Bilgi"], data)
 
