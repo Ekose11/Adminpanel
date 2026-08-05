@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero"><div><div class="eyebrow">Ay Sonu</div><h1>Puantaj ve Maaş</h1><p>Maaş, devamsızlık ve avans tek ekranda hesaplanır. Günlük primler maaş hesabına dahil edilmez. Günlük ücret aylık maaşın 30'a bölünmesiyle bulunur.</p></div></section>
+<section class="hero"><div><div class="eyebrow">Ay Sonu</div><h1>Puantaj ve Maaş</h1><p>Tam gün gelmedi 1 günlük, yarım gün 0,5 günlük ücret keser. İzinli ve raporlu günlerde kesinti yapılmaz. Günlük primler maaşa dahil edilmez.</p></div></section>
 
 <div class="card">
   <form method="get" class="form-grid compact">
@@ -9,19 +9,33 @@
   </form>
 </div>
 
+<div class="card adjustment-card">
+  <h2>Günlük Puantaj Düzeltmesi</h2>
+  <p class="muted">Personel ve tarih seçerek yarım gün, tam gün gelmedi, izinli veya raporlu kaydı girin. “Otomatik Hesapla” seçeneği manuel kaydı kaldırır.</p>
+  <form method="post" action="/admin/attendance-adjustment" class="form-grid adjustment-form">
+    <input type="hidden" name="month" value="{{month}}">
+    <div class="field"><label>Personel</label><select name="person_id" required><option value="">Seçiniz</option>{% for r in rows %}<option value="{{r.id}}">{{r.full_name}}</option>{% endfor %}</select></div>
+    <div class="field"><label>Tarih</label><input type="date" name="work_date" required></div>
+    <div class="field"><label>Durum</label><select name="status" required><option value="half_day">Yarım Gün</option><option value="absent">Tam Gün Gelmedi</option><option value="leave">İzinli — Kesinti Yok</option><option value="reported">Raporlu — Kesinti Yok</option><option value="clear">Otomatik Hesapla / Kaydı Sil</option></select></div>
+    <div class="field"><label>Açıklama</label><input name="note" placeholder="İsteğe bağlı açıklama"></div>
+    <div class="field"><label>&nbsp;</label><button class="btn">Puantajı Kaydet</button></div>
+  </form>
+</div>
+
 <div class="card payroll-wrap">
   <div class="payroll-table-wrap">
   <table class="table payroll-table">
-    <thead><tr><th>Personel</th><th>Geldi</th><th>İzin</th><th>Gelmedi</th><th>Maaş</th><th>Kesinti</th><th>Avans</th><th>Yatırılacak</th><th>Durum / İşlem</th></tr></thead>
+    <thead><tr><th>Personel</th><th>Geldi</th><th>İzin / Rapor</th><th>Yarım Gün</th><th>Tam Gün Gelmedi</th><th>Maaş</th><th>Kesinti</th><th>Avans</th><th>Yatırılacak</th><th>Durum / İşlem</th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       <td data-label="Personel"><b>{{r.full_name}}</b><br><small>{{r.department}}</small></td>
       <td data-label="Geldi">{{r.came_days}}</td>
-      <td data-label="İzin">{{r.leave_days}}</td>
-      <td data-label="Gelmedi"><b>{{r.absent_days}}</b><br><small title="{{r.absent_list}}">{{r.absent_list}}</small></td>
+      <td data-label="İzin / Rapor">İzin: {{r.leave_days}}<br><small>Rapor: {{r.reported_days}}</small></td>
+      <td data-label="Yarım Gün"><b>{{r.half_days}}</b><br><small title="{{r.half_day_list}}">{{r.half_day_list}}</small></td>
+      <td data-label="Tam Gün Gelmedi"><b>{{r.absent_days}}</b><br><small title="{{r.absent_list}}">{{r.absent_list}}</small></td>
       <td data-label="Maaş">{{'%.2f'|format(r.salary)}} TL<br><small>Günlük: {{'%.2f'|format(r.daily)}} TL</small></td>
-      <td data-label="Kesinti" class="money-minus">-{{'%.2f'|format(r.deduction)}} TL</td>
+      <td data-label="Kesinti" class="money-minus">-{{'%.2f'|format(r.deduction)}} TL<br><small>Tam: {{'%.2f'|format(r.full_day_deduction)}} / Yarım: {{'%.2f'|format(r.half_day_deduction)}}</small></td>
       <td data-label="Avans" class="money-minus">-{{'%.2f'|format(r.total_advance)}} TL</td>
       <td data-label="Yatırılacak"><strong class="payable">{{'%.2f'|format(r.payable)}} TL</strong></td>
       <td data-label="Durum / İşlem">
@@ -41,7 +55,8 @@
   </div>
 </div>
 <style>
-.payroll-table-wrap{overflow-x:auto}.payroll-table{min-width:1020px}.money-minus{color:#b91c1c;font-weight:700}.payable{font-size:1.08rem;color:#0f2a4a}.pay-status{display:block;width:max-content;padding:5px 9px;border-radius:999px;font-weight:800;margin-bottom:6px}.pay-status.paid{background:#dcfce7;color:#166534}.pay-status.waiting{background:#fef3c7;color:#92400e}.pay-actions{display:flex;gap:6px;flex-wrap:wrap}.mini{padding:7px 10px;font-size:12px}.pay-actions form{margin:0}
-@media(max-width:760px){.payroll-wrap{padding:8px;background:transparent;box-shadow:none}.payroll-table-wrap{overflow:visible}.payroll-table{min-width:0;display:block}.payroll-table thead{display:none}.payroll-table tbody,.payroll-table tr,.payroll-table td{display:block;width:100%}.payroll-table tr{background:#fff;border-radius:16px;padding:13px;margin-bottom:12px;box-shadow:0 8px 24px rgba(15,42,74,.08)}.payroll-table td{border:0!important;padding:7px 0 7px 45%;position:relative;min-height:32px;text-align:right}.payroll-table td:before{content:attr(data-label);position:absolute;left:0;top:7px;width:42%;text-align:left;font-weight:700;color:#64748b}.pay-actions{justify-content:flex-end}.pay-status{margin-left:auto}.payable{font-size:1.3rem}}
+.muted{color:#64748b}.adjustment-card h2{margin-bottom:6px}.adjustment-form{grid-template-columns:1.2fr 1fr 1.2fr 1.4fr auto;align-items:end}.payroll-table-wrap{overflow-x:auto}.payroll-table{min-width:1220px}.money-minus{color:#b91c1c;font-weight:700}.payable{font-size:1.08rem;color:#0f2a4a}.pay-status{display:block;width:max-content;padding:5px 9px;border-radius:999px;font-weight:800;margin-bottom:6px}.pay-status.paid{background:#dcfce7;color:#166534}.pay-status.waiting{background:#fef3c7;color:#92400e}.pay-actions{display:flex;gap:6px;flex-wrap:wrap}.mini{padding:7px 10px;font-size:12px}.pay-actions form{margin:0}
+@media(max-width:1050px){.adjustment-form{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.adjustment-form{grid-template-columns:1fr}.payroll-wrap{padding:8px;background:transparent;box-shadow:none}.payroll-table-wrap{overflow:visible}.payroll-table{min-width:0;display:block}.payroll-table thead{display:none}.payroll-table tbody,.payroll-table tr,.payroll-table td{display:block;width:100%}.payroll-table tr{background:#fff;border-radius:16px;padding:13px;margin-bottom:12px;box-shadow:0 8px 24px rgba(15,42,74,.08)}.payroll-table td{border:0!important;padding:7px 0 7px 45%;position:relative;min-height:32px;text-align:right}.payroll-table td:before{content:attr(data-label);position:absolute;left:0;top:7px;width:42%;text-align:left;font-weight:700;color:#64748b}.pay-actions{justify-content:flex-end}.pay-status{margin-left:auto}.payable{font-size:1.3rem}}
 </style>
 {% endblock %}

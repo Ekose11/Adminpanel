@@ -218,6 +218,19 @@ def init_db():
         q("create index if not exists idx_attendance_logs_event_time on attendance_logs(event_time)")
     except Exception:
         pass
+    q("""create table if not exists attendance_adjustments(
+        id serial primary key,
+        person_id integer references personnel(id) on delete cascade,
+        work_date text not null,
+        status text not null,
+        note text default '',
+        created_at text not null,
+        unique(person_id, work_date)
+    )""")
+    try:
+        q("create index if not exists idx_attendance_adjustments_person_date on attendance_adjustments(person_id,work_date)")
+    except Exception:
+        pass
     READY = True
 
 @app.after_request
@@ -534,6 +547,17 @@ def monthly_puantaj_rows(month=None):
         custom_map.setdefault(c['person_id'], {})[str(c['day'])[:10]] = int(c.get('is_work_day') or 0)
 
     try:
+        adjustment_rows = q("select person_id,work_date,status,note from attendance_adjustments where substring(work_date,1,7)=%s", (month,), fetch=True)
+    except Exception:
+        adjustment_rows = []
+    adjustment_map = {}
+    for a in adjustment_rows:
+        adjustment_map.setdefault(a['person_id'], {})[str(a.get('work_date') or '')[:10]] = {
+            'status': str(a.get('status') or '').lower(),
+            'note': a.get('note') or ''
+        }
+
+    try:
         advances = q("""select person_id,coalesce(sum(amount),0) total from advances
             where substring(coalesce(cast(created_at as text),''),1,7)=%s and status in ('Onaylandı','Beklemede') group by person_id""", (month,), fetch=True)
     except Exception:
@@ -560,17 +584,42 @@ def monthly_puantaj_rows(month=None):
     for person in people:
         pid=person['id']
         person_days=[d for d in base_days if custom_map.get(pid,{}).get(d,1)==1]
-        came=came_map.get(pid,set()); leave_days=leave_map.get(pid,set())
-        absent=[d for d in person_days if d not in came and d not in leave_days]
+        came=came_map.get(pid,set()); auto_leave_days=leave_map.get(pid,set())
+        person_adjustments = adjustment_map.get(pid,{})
+        half_days=[]; manual_absent=[]; manual_leave=[]; reported_days=[]
+        for d, adj in person_adjustments.items():
+            if d not in person_days:
+                continue
+            st=adj.get('status')
+            if st=='half_day': half_days.append(d)
+            elif st=='absent': manual_absent.append(d)
+            elif st=='leave': manual_leave.append(d)
+            elif st=='reported': reported_days.append(d)
+        no_cut_days = set(auto_leave_days) | set(manual_leave) | set(reported_days)
+        # Yarım gün işaretlenen tarih tam gün devamsızlığa girmez.
+        absent=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days]
+        # Yönetici tam gün gelmedi seçtiyse, giriş kaydı olsa bile tam gün kesilir.
+        absent = sorted(set(absent) | set(manual_absent))
+        half_days = sorted(set(half_days) - set(manual_absent))
+        leave_days = sorted(set(auto_leave_days) | set(manual_leave))
+        reported_days = sorted(set(reported_days))
         salary=float(person.get('salary') or 0); daily=salary/30.0
-        deduction=daily*len(absent); advance=advance_map.get(pid,0.0); bonus=bonus_map.get(pid,0.0)
+        full_day_deduction=daily*len(absent)
+        half_day_deduction=(daily/2.0)*len(half_days)
+        deduction=full_day_deduction+half_day_deduction
+        advance=advance_map.get(pid,0.0); bonus=bonus_map.get(pid,0.0)
         payable=max(0.0, salary-deduction-advance)
         payment=payment_map.get(pid)
         rows.append({
             'id':pid,'full_name':person['full_name'],'department':person['department'],
             'shift_name':person.get('shift_name') or 'Sabah','shift_start':person.get('shift_start') or '09:00','shift_end':person.get('shift_end') or '18:00',
-            'workdays':len(person_days),'came_days':len(came),'leave_days':len(leave_days),'absent_days':len(absent),
-            'absent_list':', '.join(absent) if absent else '-', 'salary':salary,'daily':daily,'deduction':deduction,
+            'workdays':len(person_days),'came_days':len(came),'leave_days':len(leave_days),'reported_days':len(reported_days),
+            'absent_days':len(absent),'half_days':len(half_days),
+            'absent_list':', '.join(absent) if absent else '-',
+            'half_day_list':', '.join(half_days) if half_days else '-',
+            'reported_list':', '.join(reported_days) if reported_days else '-',
+            'salary':salary,'daily':daily,'full_day_deduction':full_day_deduction,
+            'half_day_deduction':half_day_deduction,'deduction':deduction,
             'total_advance':advance,'monthly_bonus':bonus,'net_salary':payable,'payable':payable,
             'paid':bool(payment),'paid_amount':float(payment.get('amount') or 0) if payment else 0.0,'paid_at':payment.get('created_at') if payment else ''
         })
@@ -1032,6 +1081,36 @@ def api_employee_shifts():
             items.append({"day": day, "code": shift_code(p.get("shift_name")), "shift_name": p.get("shift_name") or "Sabah", "shift_start": p.get("shift_start") or "09:00", "shift_end": p.get("shift_end") or "18:00", "is_work_day": 1})
     return jsonify({"status":"ok", "month": month, "person": person_summary(p["id"]), "shifts": items})
 
+@app.route("/admin/attendance-adjustment", methods=["POST"])
+def attendance_adjustment():
+    guard = admin_required()
+    if guard: return guard
+    person_id = request.form.get("person_id", type=int)
+    work_date = (request.form.get("work_date") or "").strip()
+    status = (request.form.get("status") or "").strip().lower()
+    note = (request.form.get("note") or "").strip()
+    month = (request.form.get("month") or now_dt().strftime("%Y-%m")).strip()
+    allowed = {"half_day", "absent", "leave", "reported", "clear"}
+    if not person_id or status not in allowed:
+        flash("Personel veya durum geçersiz.")
+        return redirect(f"/admin/monthly-puantaj?month={month}")
+    try:
+        datetime.strptime(work_date, "%Y-%m-%d")
+    except Exception:
+        flash("Geçerli bir tarih seçmelisiniz.")
+        return redirect(f"/admin/monthly-puantaj?month={month}")
+    if status == "clear":
+        q("delete from attendance_adjustments where person_id=%s and work_date=%s", (person_id, work_date))
+        flash("Özel puantaj kaydı kaldırıldı; otomatik hesaplama kullanılacak.")
+    else:
+        q("""insert into attendance_adjustments(person_id,work_date,status,note,created_at)
+             values(%s,%s,%s,%s,%s)
+             on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""",
+          (person_id, work_date, status, note, now_str()))
+        labels={"half_day":"Yarım gün","absent":"Tam gün gelmedi","leave":"İzinli","reported":"Raporlu"}
+        flash(f"Puantaj kaydedildi: {labels.get(status,status)}.")
+    return redirect(f"/admin/monthly-puantaj?month={month}")
+
 @app.route("/admin/monthly-puantaj")
 def monthly_puantaj():
     guard = admin_required()
@@ -1046,8 +1125,8 @@ def monthly_puantaj_pdf():
     if guard: return guard
     month = request.args.get("month") or now_dt().strftime("%Y-%m")
     rows = monthly_puantaj_rows(month)
-    data = [[r["full_name"], r["department"], str(r["came_days"]), str(r["leave_days"]), str(r["absent_days"]), f"{r['salary']:.2f} TL", f"{r['deduction']:.2f} TL", f"{r['total_advance']:.2f} TL", f"{r['payable']:.2f} TL", "Ödendi" if r['paid'] else "Bekliyor"] for r in rows]
-    return make_pdf_response(f"ay_sonu_maas_{month}.pdf", "Ay Sonu Puantaj ve Maaş", f"Ay: {month} · Günlük ücret aylık maaş / 30", ["Personel", "Bölüm", "Geldi", "İzin", "Gelmedi", "Maaş", "Devamsızlık", "Avans", "Yatırılacak", "Durum"], data)
+    data = [[r["full_name"], r["department"], str(r["came_days"]), str(r["leave_days"]), str(r["reported_days"]), str(r["half_days"]), str(r["absent_days"]), f"{r['salary']:.2f} TL", f"{r['deduction']:.2f} TL", f"{r['total_advance']:.2f} TL", f"{r['payable']:.2f} TL", "Ödendi" if r['paid'] else "Bekliyor"] for r in rows]
+    return make_pdf_response(f"ay_sonu_maas_{month}.pdf", "Ay Sonu Puantaj ve Maaş", f"Ay: {month} · Tam gün 1 günlük, yarım gün 0,5 günlük kesinti", ["Personel", "Bölüm", "Geldi", "İzin", "Rapor", "Yarım", "Gelmedi", "Maaş", "Kesinti", "Avans", "Yatırılacak", "Durum"], data)
 
 @app.route("/admin/payroll/<int:pid>")
 def payroll(pid):
@@ -1060,9 +1139,12 @@ def payroll(pid):
         flash("Personel bulunamadı."); return redirect("/admin/monthly-puantaj")
     data = [
         ["Personel", r["full_name"]], ["Bölüm", r["department"]], ["Ay", month], ["Vardiya", f"{r['shift_name']} {r['shift_start']}-{r['shift_end']}"],
-        ["Hesaplama Esası", "Aylık maaş / 30"], ["Geldiği Gün", str(r["came_days"])], ["İzinli Gün", str(r["leave_days"])],
-        ["Gelmediği Gün", str(r["absent_days"])], ["Gelmeyen Tarihler", r["absent_list"]], ["Aylık Maaş", f"{r['salary']:.2f} TL"],
-        ["Günlük Ücret", f"{r['daily']:.2f} TL"], ["Devamsızlık Kesintisi", f"{r['deduction']:.2f} TL"], ["Avans", f"{r['total_advance']:.2f} TL"], ["Yatırılacak", f"{r['payable']:.2f} TL"], ["Durum", "Ödendi" if r["paid"] else "Bekliyor"],
+        ["Hesaplama Esası", "Aylık maaş / 30"], ["Geldiği Gün", str(r["came_days"])], ["İzinli Gün", str(r["leave_days"])], ["Raporlu Gün", str(r["reported_days"])],
+        ["Tam Gün Gelmedi", str(r["absent_days"])], ["Gelmeyen Tarihler", r["absent_list"]],
+        ["Yarım Gün", str(r["half_days"])], ["Yarım Gün Tarihleri", r["half_day_list"]], ["Aylık Maaş", f"{r['salary']:.2f} TL"],
+        ["Günlük Ücret", f"{r['daily']:.2f} TL"], ["Tam Gün Kesintisi", f"{r['full_day_deduction']:.2f} TL"],
+        ["Yarım Gün Kesintisi", f"{r['half_day_deduction']:.2f} TL"], ["Toplam Devamsızlık Kesintisi", f"{r['deduction']:.2f} TL"],
+        ["Avans", f"{r['total_advance']:.2f} TL"], ["Yatırılacak", f"{r['payable']:.2f} TL"], ["Durum", "Ödendi" if r["paid"] else "Bekliyor"],
     ]
     return make_pdf_response(f"bordro_{r['full_name'].replace(' ','_')}_{month}.pdf", "Personel Bordro", f"Oluşturma: {now_str()}", ["Alan", "Bilgi"], data)
 

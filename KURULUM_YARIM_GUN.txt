@@ -1,0 +1,17 @@
+BOZTEK YARIM GÜN PUANTAJ GÜNCELLEMESİ
+
+Eklenen hesaplama:
+- Tam gün gelmedi: 1 günlük ücret kesilir.
+- Yarım gün: 0,5 günlük ücret kesilir.
+- İzinli: kesinti yapılmaz.
+- Raporlu: kesinti yapılmaz.
+- Günlük ücret: aylık maaş / 30.
+- Günlük primler maaş hesabına dahil değildir.
+
+Kullanım:
+Panel > Ay Sonu Puantaj / Maaş > Günlük Puantaj Düzeltmesi
+Personel + tarih + durum seçip kaydedin.
+Yanlış kayıt için “Otomatik Hesapla / Kaydı Sil” seçin.
+
+Neon veritabanında attendance_adjustments tablosu otomatik oluşur.
+Mevcut personel, maaş, avans, prim ve giriş/çıkış kayıtları silinmez.
