@@ -8,3 +8,31 @@ window.addEventListener('attendance-live',e=>{const x=e.detail,box=document.getE
 async function refreshSummary(){try{const d=await fetch('/api/admin/dashboard-summary',{cache:'no-store'}).then(r=>r.json());if(d.status==='ok'){statPersonel.textContent=d.personel;statInside.textContent=d.inside;statLate.textContent=d.late;statEarly.textContent=d.early}}catch(e){}}
 
 </script>{% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>

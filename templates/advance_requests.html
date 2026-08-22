@@ -3,3 +3,31 @@
 <div class="card"><table class="table"><tr><th>Personel</th><th>Tutar</th><th>Açıklama</th><th>Tarih</th><th>Durum</th><th>İşlem</th></tr>
 {% for r in rows %}<tr class="{% if r.status=='Beklemede' %}unread-row{% endif %}"><td>{{r.full_name}}</td><td>{{'%.2f'|format(r.amount|float)}} TL</td><td>{{r.note or '-'}}</td><td>{{r.created_at}}</td><td><span class="status-badge {{r.status|lower}}">{{r.status}}</span></td><td>{% if r.status=='Beklemede' %}<a class="btn small" href="/admin/advance-requests/{{r.id}}/approve">Onayla</a> <a class="btn small danger" href="/admin/advance-requests/{{r.id}}/reject">Reddet</a>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="6">Avans talebi bulunmuyor.</td></tr>{% endfor %}</table></div>
 {% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>

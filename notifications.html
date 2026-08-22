@@ -1,1 +1,29 @@
 {% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Kayıtlar</div><h1>Giriş Çıkış</h1><p>Tarih seçerek gelen / gelmeyen personelleri net gör.</p></div></section><div class="card"><form method="get" class="form-grid compact"><div class="field"><label>Tarih Seç</label><input type="date" name="date" value="{{selected}}"></div><div class="field"><label>&nbsp;</label><button class="btn">Listele</button> <a class="btn secondary" href="/admin/attendance/csv?date={{selected}}">CSV İndir</a></div></form></div><div class="card"><div class="card-head"><h2>{{selected}} Gelmeyen Personeller</h2><span>{{missing|length}} kişi</span></div><div class="badge-list">{% if missing %}{% for p in missing %}<span class="badge red">{{p.full_name}}</span>{% endfor %}{% else %}<span class="badge green">Eksik yok</span>{% endif %}</div></div><div class="card"><h2>{{selected}} Giriş Çıkış Kayıtları</h2><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Tip</th><th>Zaman</th></tr>{% for r in rows %}<tr><td>{{r.full_name}}</td><td>{{r.department}}</td><td>{{'Giriş' if r.event_type=='entry' else 'Çıkış'}}</td><td>{{r.event_time}}</td></tr>{% endfor %}</table></div>{% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>

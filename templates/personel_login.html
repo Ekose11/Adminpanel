@@ -1,1 +1,30 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personel Giriş</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body class="personel-bg"><div class="login-card premium-login"><div class="app-logo">◆</div><h1>Personel Paneli</h1><p>Profil, QR, maaş ve bildirim ekranı</p>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}<form method="post"><input name="username" placeholder="Kullanıcı adı" required><input name="password" type="password" placeholder="Şifre" required><button class="btn wide">Giriş Yap</button></form><a class="soft-link" href="/admin/login">Yönetici paneli</a></div></body></html>
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personel Giriş</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body class="personel-bg"><div class="login-card premium-login"><div class="app-logo">◆</div><h1>Personel Paneli</h1><p>Profil, QR, maaş ve bildirim ekranı</p>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}<form method="post"><input name="username" placeholder="Kullanıcı adı" required><input name="password" type="password" placeholder="Şifre" required><button class="btn wide">Giriş Yap</button></form><a class="soft-link" href="/admin/login">Yönetici paneli</a></div>
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>
+
+</body></html>

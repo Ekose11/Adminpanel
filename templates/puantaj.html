@@ -1,1 +1,29 @@
 {% extends 'base.html' %}{% block content %}<div class="top"><div><h1>Ay Sonu Puantaj</h1><div class="mut">Gelmediği günler otomatik hesaplanır, maaştan kesinti düşer</div></div></div><form method="get" class="card"><div class="formrow"><label>Ay seç</label><input type="month" name="month" value="{{ym}}"></div><button>Hesapla</button></form><br><div class="card"><table><tr><th>Personel</th><th>Çalışma</th><th>Geldi</th><th>Gelmedi</th><th>Geç</th><th>Erken</th><th>Kesinti</th><th>Net</th><th>Bordro</th></tr>{% for r in rows %}<tr><td><b>{{r.p.name}}</b></td><td>{{r.work}}</td><td>{{r.present}}</td><td>{{r.absent}}</td><td>{{r.late}}</td><td>{{r.early}}</td><td>{{r.cut}} TL</td><td>{{r.net}} TL</td><td><a class="btn" href="/admin/payroll/{{r.p.id}}?month={{ym}}">Bordro</a></td></tr>{% endfor %}</table></div>{% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>

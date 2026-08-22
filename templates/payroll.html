@@ -1,1 +1,29 @@
 {% extends 'base.html' %}{% block content %}<div class="hero"><h1>Ay Sonu Puantaj</h1><p class="muted">Vardiya listesine göre gelmediği günler otomatik hesaplanır, kesinti maaşa yansır.</p></div><div class="card"><form class="formgrid" method="get"><input class="input" type="month" name="month" value="{{month}}"><button class="btn">Hesapla</button><a class="btn" href="/payroll/csv?month={{month}}">CSV İndir</a></form></div><div class="card" style="margin-top:16px"><table><tr><th>Personel</th><th>Planlı Gün</th><th>Geldiği Gün</th><th>Gelmediği Gün</th><th>Brüt Maaş</th><th>Avans</th><th>Kesinti</th><th>Net</th><th>Bordro</th></tr>{% for r in rows %}<tr><td>{{r.name}}</td><td>{{r.scheduled}}</td><td>{{r.present}}</td><td>{{r.absent}}</td><td>{{'%.2f'|format(r.salary)}}</td><td>{{'%.2f'|format(r.advance)}}</td><td>{{'%.2f'|format(r.deduction)}}</td><td><b>{{'%.2f'|format(r.net)}}</b></td><td><a class="btn" href="/payslip/{{r.id}}?month={{month}}">Bordro</a></td></tr>{% endfor %}</table></div>{% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>

@@ -1,1 +1,29 @@
 {% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Finans</div><h1>Avanslar</h1><p>Avans bilgileri ilgili personele bildirim olarak düşer.</p></div></section><div class="card"><form method="post" class="form-grid"><div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}</option>{% endfor %}</select></div><div class="field"><label>Tutar</label><input name="amount" type="number" step="0.01" required></div><div class="field full"><label>Not</label><input name="note"></div><button class="btn">Avans Ekle</button></form></div><div class="card"><table class="table"><tr><th>Personel</th><th>Tutar</th><th>Not</th><th>Durum</th></tr>{% for r in rows %}<tr><td>{{r.full_name}}</td><td>{{'%.2f'|format(r.amount|float)}} TL</td><td>{{r.note or '-'}}</td><td>{{r.status}}</td></tr>{% endfor %}</table></div>{% endblock %}
+
+<!-- phone-status-sync-fix -->
+<script>
+(function () {
+  const FIX_VERSION = 'qr-status-sync-v2';
+  function bust(url) {
+    const u = new URL(url, window.location.origin);
+    u.searchParams.set('_sync', FIX_VERSION);
+    u.searchParams.set('_t', Date.now().toString());
+    return u.pathname + '?' + u.searchParams.toString();
+  }
+  async function refreshPuantaj() {
+    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
+      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
+    });
+    try {
+      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
+      if (!res.ok) return;
+      const data = await res.json();
+      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
+    } catch(e) {}
+  }
+  window.addEventListener('focus', refreshPuantaj);
+  window.addEventListener('pageshow', refreshPuantaj);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
+  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
+})();
+</script>
