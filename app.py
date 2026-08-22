@@ -586,7 +586,7 @@ def monthly_puantaj_rows(month=None):
         person_days=[d for d in base_days if custom_map.get(pid,{}).get(d,1)==1]
         came=came_map.get(pid,set()); auto_leave_days=leave_map.get(pid,set())
         person_adjustments = adjustment_map.get(pid,{})
-        half_days=[]; manual_absent=[]; manual_leave=[]; reported_days=[]
+        half_days=[]; manual_absent=[]; manual_leave=[]; reported_days=[]; manual_full=[]
         for d, adj in person_adjustments.items():
             if d not in person_days:
                 continue
@@ -595,9 +595,12 @@ def monthly_puantaj_rows(month=None):
             elif st=='absent': manual_absent.append(d)
             elif st=='leave': manual_leave.append(d)
             elif st=='reported': reported_days.append(d)
+            elif st=='full_day': manual_full.append(d)
         no_cut_days = set(auto_leave_days) | set(manual_leave) | set(reported_days)
         # Yarım gün işaretlenen tarih tam gün devamsızlığa girmez.
-        absent=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days]
+        # QR unutulursa otomatik maaş kesintisi yapılmaz; yönetici Eksik QR ekranından karar verir.
+        missing_qr=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days and d not in manual_full]
+        absent=[]
         # Yönetici tam gün gelmedi seçtiyse, giriş kaydı olsa bile tam gün kesilir.
         absent = sorted(set(absent) | set(manual_absent))
         half_days = sorted(set(half_days) - set(manual_absent))
@@ -614,7 +617,7 @@ def monthly_puantaj_rows(month=None):
             'id':pid,'full_name':person['full_name'],'department':person['department'],
             'shift_name':person.get('shift_name') or 'Sabah','shift_start':person.get('shift_start') or '09:00','shift_end':person.get('shift_end') or '18:00',
             'workdays':len(person_days),'came_days':len(came),'leave_days':len(leave_days),'reported_days':len(reported_days),
-            'absent_days':len(absent),'half_days':len(half_days),
+            'absent_days':len(absent),'half_days':len(half_days),'missing_qr_days':len(missing_qr),'missing_qr_list':', '.join(missing_qr) if missing_qr else '-',
             'absent_list':', '.join(absent) if absent else '-',
             'half_day_list':', '.join(half_days) if half_days else '-',
             'reported_list':', '.join(reported_days) if reported_days else '-',
@@ -1090,7 +1093,7 @@ def attendance_adjustment():
     status = (request.form.get("status") or "").strip().lower()
     note = (request.form.get("note") or "").strip()
     month = (request.form.get("month") or now_dt().strftime("%Y-%m")).strip()
-    allowed = {"half_day", "absent", "leave", "reported", "clear"}
+    allowed = {"half_day", "absent", "leave", "reported", "full_day", "clear"}
     if not person_id or status not in allowed:
         flash("Personel veya durum geçersiz.")
         return redirect(f"/admin/monthly-puantaj?month={month}")
@@ -1107,9 +1110,31 @@ def attendance_adjustment():
              values(%s,%s,%s,%s,%s)
              on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""",
           (person_id, work_date, status, note, now_str()))
-        labels={"half_day":"Yarım gün","absent":"Tam gün gelmedi","leave":"İzinli","reported":"Raporlu"}
+        labels={"half_day":"Yarım gün","absent":"Tam gün gelmedi","leave":"İzinli","reported":"Raporlu","full_day":"Tam gün geldi"}
         flash(f"Puantaj kaydedildi: {labels.get(status,status)}.")
     return redirect(f"/admin/monthly-puantaj?month={month}")
+
+@app.route("/admin/missing-qr")
+def missing_qr():
+    guard = admin_required()
+    if guard: return guard
+    month = request.args.get("month") or now_dt().strftime("%Y-%m")
+    rows = [r for r in monthly_puantaj_rows(month) if r.get("missing_qr_days",0)>0]
+    return render_template("missing_qr.html", title="Eksik QR Kontrol", month=month, rows=rows)
+
+@app.route("/admin/missing-qr/resolve", methods=["POST"])
+def missing_qr_resolve():
+    guard = admin_required()
+    if guard: return guard
+    person_id=request.form.get("person_id", type=int); work_date=(request.form.get("work_date") or "").strip()
+    status=(request.form.get("status") or "").strip(); month=(request.form.get("month") or now_dt().strftime("%Y-%m"))
+    note=(request.form.get("note") or "QR unutuldu - yönetici onayı").strip()
+    if not person_id or status not in {"full_day","half_day","absent","leave","reported"}:
+        flash("Geçersiz kayıt."); return redirect(f"/admin/missing-qr?month={month}")
+    q("""insert into attendance_adjustments(person_id,work_date,status,note,created_at) values(%s,%s,%s,%s,%s)
+         on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""", (person_id,work_date,status,note,now_str()))
+    flash("Eksik QR kaydı puantaja işlendi.")
+    return redirect(f"/admin/missing-qr?month={month}")
 
 @app.route("/admin/monthly-puantaj")
 def monthly_puantaj():
