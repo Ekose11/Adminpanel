@@ -441,8 +441,9 @@ def person_summary(pid):
     days=workdays_in_month(month); today=today_str(); days=[d for d in days if d<=today]
     custom=q("select day,is_work_day from monthly_shifts where person_id=%s and month=%s",(pid,month),fetch=True)
     cmap={r['day']:int(r.get('is_work_day') or 0) for r in custom}; days=[d for d in days if cmap.get(d,1)==1]
-    entries=q("select distinct substring(cast(event_time as text),1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(cast(event_time as text),1,7)=%s",(pid,month),fetch=True)
+    entries=q("select substring(cast(event_time as text),1,10) d, min(cast(event_time as text)) first_entry from attendance_logs where person_id=%s and event_type='entry' and substring(cast(event_time as text),1,7)=%s group by substring(cast(event_time as text),1,10)",(pid,month),fetch=True)
     came={r['d'] for r in entries}
+    half_qr={r['d'] for r in entries if str(r.get('first_entry') or '')[11:16] >= '12:00'}
     leave_days=set(); leaves=q("select start_date,end_date from leaves where person_id=%s and status='İzinli'",(pid,),fetch=True)
     for lv in leaves:
         try:
@@ -452,12 +453,22 @@ def person_summary(pid):
                 if iso in days: leave_days.add(iso)
                 d+=timedelta(days=1)
         except Exception: pass
-    absent=len([d for d in days if d not in came and d not in leave_days])
-    salary=float(p.get('salary') or 0); daily=salary/30.0; deduction=daily*absent
+    try:
+        adjustments=q("select work_date,status from attendance_adjustments where person_id=%s and substring(work_date,1,7)=%s",(pid,month),fetch=True)
+    except Exception:
+        adjustments=[]
+    adj={str(a.get('work_date') or '')[:10]:str(a.get('status') or '').lower() for a in adjustments}
+    manual_absent={d for d,st in adj.items() if st=='absent'}
+    manual_half={d for d,st in adj.items() if st=='half_day'}
+    no_cut={d for d,st in adj.items() if st in {'leave','reported'}} | leave_days
+    auto_half = {d for d in half_qr if d not in no_cut and adj.get(d) not in {'full_day','absent'}}
+    half_days = (auto_half | {d for d in manual_half if d not in manual_absent}) - manual_absent
+    absent_days = manual_absent
+    salary=float(p.get('salary') or 0); daily=salary/30.0; deduction=daily*len(absent_days)+(daily/2.0)*len(half_days)
     advance=float(p.get('total_advance') or 0); bonus=float(p.get('monthly_bonus') or 0); payable=max(0.0,salary-deduction-advance)
     return {
         "id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":salary,
-        "total_advance":advance,"monthly_bonus":bonus,"absent_days":absent,"absence_deduction":deduction,
+        "total_advance":advance,"monthly_bonus":bonus,"absent_days":len(absent_days),"half_days":len(half_days),"half_day_list":", ".join(sorted(half_days)) if half_days else "-","absence_deduction":deduction,
         "daily_salary":daily,"remaining_salary":payable,"payable_salary":payable,"salary_month":month,
         "annual_leave_total":p.get("annual_leave_total") or 0,"annual_leave_used":p.get("annual_leave_used") or 0,
         "annual_leave_remaining":p.get("annual_leave_remaining") or 0,"phone":p.get("phone") or "",
@@ -518,12 +529,14 @@ def monthly_puantaj_rows(month=None):
         return []
     ids = [x["id"] for x in people]
 
-    attendance = q("""select person_id,substring(cast(event_time as text),1,10) d
+    attendance = q("""select person_id,substring(cast(event_time as text),1,10) d, min(cast(event_time as text)) first_entry
         from attendance_logs where event_type='entry' and substring(cast(event_time as text),1,7)=%s
-        group by person_id,substring(event_time,1,10)""", (month,), fetch=True)
+        group by person_id,substring(cast(event_time as text),1,10)""", (month,), fetch=True)
     came_map = {}
+    first_entry_map = {}
     for r in attendance:
         came_map.setdefault(r['person_id'], set()).add(r['d'])
+        first_entry_map.setdefault(r['person_id'], {})[r['d']] = str(r.get('first_entry') or '')
 
     leaves = q("select person_id,start_date,end_date from leaves where status='İzinli'", fetch=True)
     leave_map = {pid:set() for pid in ids}
@@ -599,11 +612,10 @@ def monthly_puantaj_rows(month=None):
         no_cut_days = set(auto_leave_days) | set(manual_leave) | set(reported_days)
         # Yarım gün işaretlenen tarih tam gün devamsızlığa girmez.
         # QR unutulursa otomatik maaş kesintisi yapılmaz; yönetici Eksik QR ekranından karar verir.
-        missing_qr=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days and d not in manual_full]
-        absent=[]
-        # Yönetici tam gün gelmedi seçtiyse, giriş kaydı olsa bile tam gün kesilir.
-        absent = sorted(set(absent) | set(manual_absent))
-        half_days = sorted(set(half_days) - set(manual_absent))
+        auto_half_days={d for d in came if d in person_days and d not in no_cut_days and str(first_entry_map.get(pid,{}).get(d) or '')[11:16] >= '12:00'}
+        missing_qr=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days and d not in manual_full and d not in manual_absent]
+        absent = sorted(set(manual_absent))
+        half_days = sorted((set(half_days) | auto_half_days) - set(manual_absent) - set(manual_full) - set(manual_leave) - set(reported_days))
         leave_days = sorted(set(auto_leave_days) | set(manual_leave))
         reported_days = sorted(set(reported_days))
         salary=float(person.get('salary') or 0); daily=salary/30.0

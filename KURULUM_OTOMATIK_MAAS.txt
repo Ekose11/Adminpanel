@@ -1,0 +1,14 @@
+OTOMATIK MAAS / PUANTAJ HESAPLAMA
+
+Maaş hesabı artık QR kayıtlarından otomatik yapılır.
+- Aylık maaş / 30 = günlük ücret
+- İlk QR girişi 12:00'dan önce = tam gün
+- İlk QR girişi 12:00 veya sonrası = yarım gün (0,5 günlük kesinti)
+- İzinli/raporlu = kesinti yok
+- QR olmayan gün = otomatik devamsız sayılmaz; Eksik QR Kontrol ekranında karar bekler
+- Yönetici manuel puantaj düzeltmesi otomatik hesabı geçersiz kılar
+- Avans maaştan düşülür
+- Günlük prim maaşa eklenmez
+- Personel uygulamasındaki Maaş ekranı aynı merkezi hesaplamayı kullanır
+
+Bu hesaplama panel ve personel uygulamasında aynı sonucu üretmek üzere app.py içindeki merkezi person_summary/monthly_puantaj_rows hesaplarına bağlanmıştır.

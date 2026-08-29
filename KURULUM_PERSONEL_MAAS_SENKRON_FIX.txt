@@ -1,0 +1,1 @@
+Personel QR uygulamasındaki Maaş ekranı puantaj değişikliklerinden sonra güncel veriyi no-store ile yeniden ister. GitHub'a yükleyip Render deploy sonrası eski ana ekran uygulamasını kapatın; gerekirse kaldırıp yeniden Ana Ekrana Ekle yapın.
