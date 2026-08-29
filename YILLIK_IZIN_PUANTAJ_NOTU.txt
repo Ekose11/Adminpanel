@@ -1,0 +1,11 @@
+Günlük Puantaj Düzeltme ekranında Yıllık İzin seçeneği eklenmiştir.
+
+İş kuralı:
+- Yıllık İzin: maaş kesintisi yok.
+- Gelmedi: 1 günlük kesinti.
+- Yarım Gün Geldi: 0,5 günlük kesinti.
+- Raporlu: kesinti yok.
+
+Not: Mevcut backend'deki puantaj durumlarının isimleri korunmuştur; yeni seçenek
+yillik_izin değeriyle gönderilir. Backend'in yıllık izin bakiyesini düşürmesi,
+mevcut izin API'sinin durum eşlemesine göre yapılmalıdır.
