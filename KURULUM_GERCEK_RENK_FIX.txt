@@ -1,0 +1,4 @@
+ÖNEMLİ: Bu sürümde premium CSS artık gerçek Flask static/css klasöründedir.
+GitHub'a yükledikten sonra Render'ın yeni deploy'u tamamlanmalıdır.
+Tarayıcıda Ctrl+F5 yapın. Telefonda PWA kullanılıyorsa uygulamayı kaldırıp siteyi yeniden Ana Ekrana Ekle yapın.
+Bu paket mevcut hesaplama mantığını değiştirmez; yalnızca gerçek static CSS bağlantısını düzeltir.

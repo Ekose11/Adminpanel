@@ -1,4 +1,4 @@
-<link rel="stylesheet" href="../boztek_premium_readability.css?v=final3">{% extends "base.html" %}{% block content %}
+{% extends "base.html" %}{% block content %}
 
 <section class="hero"><div><div class="eyebrow">Canlı Panel</div><h1>Premium Dashboard</h1><p>Tek QR, puantaj ve personel durumları telefonda ve bilgisayarda canlı olarak görünür.</p></div><div class="clock">{{stats.clock}}</div></section>
 <div class="stats"><div class="stat"><span>Personel</span><b id="statPersonel">{{stats.personel}}</b></div><div class="stat green"><span>İşte Olan</span><b id="statInside">{{stats.inside}}</b></div><div class="stat orange"><span>Geç Giriş</span><b id="statLate">{{stats.late}}</b></div><div class="stat red"><span>Erken Çıkış</span><b id="statEarly">{{stats.early}}</b></div></div><div id="liveAttendance" class="live-attendance hidden"><strong id="liveName">-</strong><span id="liveAction">-</span><time id="liveTime">-</time></div>
