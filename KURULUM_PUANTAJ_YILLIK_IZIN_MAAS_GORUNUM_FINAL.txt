@@ -1,0 +1,8 @@
+Bu paket:
+- Yıllık İzin seçeneğini korur.
+- Tam gün / yarım gün / gelmedi / yıllık izin / raporlu ayrımını korur.
+- Maaş rakamları için yüksek kontrastlı premium görünüm ekler.
+- Ödenecek net maaşı büyük ve yeşil gösterir.
+- Telefon ekranında kartlar küçülür ve okunabilir kalır.
+
+Mevcut hesaplama backend'i değiştirilmemiştir; görünürlük ve UI katmanı güçlendirilmiştir.
