@@ -1,0 +1,42 @@
+
+/* BOZTEK premium payroll readability */
+:root{
+  --bg:#0b1220; --panel:#111b2e; --panel2:#16243b; --text:#f8fafc;
+  --muted:#a8b3c7; --green:#22c55e; --red:#ef4444; --yellow:#f59e0b;
+  --blue:#38bdf8; --purple:#a78bfa; --border:rgba(255,255,255,.10);
+}
+body{background:var(--bg)!important;color:var(--text)!important}
+.card,.dashboard-card,.stat-card,.salary-card,.panel,.box{
+  background:linear-gradient(145deg,var(--panel),var(--panel2))!important;
+  border:1px solid var(--border)!important;
+  border-radius:16px!important;
+}
+.stat-value,.amount,.salary-amount,.net-salary,[data-salary-payable]{
+  color:var(--text)!important;font-size:clamp(1.7rem,4vw,2.6rem)!important;
+  font-weight:800!important;letter-spacing:-.02em;
+}
+.net-salary,.salary-payable,[data-salary-payable]{
+  color:var(--green)!important;text-shadow:0 0 18px rgba(34,197,94,.15);
+}
+.money,.tl,.currency{font-weight:750!important;color:var(--text)!important}
+.stat-label,.muted,.small-label{color:var(--muted)!important}
+.badge-success{background:rgba(34,197,94,.15)!important;color:#86efac!important}
+.badge-danger{background:rgba(239,68,68,.15)!important;color:#fca5a5!important}
+.badge-warning{background:rgba(245,158,11,.15)!important;color:#fde68a!important}
+.badge-info{background:rgba(56,189,248,.15)!important;color:#bae6fd!important}
+table{color:var(--text)!important}
+table th{color:#cbd5e1!important;font-weight:700}
+table td{color:#f8fafc!important}
+.net-pay-box,.payable-box{
+  border:2px solid rgba(34,197,94,.45)!important;
+  background:rgba(34,197,94,.08)!important;
+  border-radius:16px!important;padding:18px!important;
+}
+.net-pay-box .value,.payable-box .value{
+  font-size:2.3rem!important;font-weight:900!important;color:#4ade80!important;
+}
+@media(max-width:700px){
+  .container,.content,.main{padding-left:10px!important;padding-right:10px!important}
+  .stat-value,.amount,.salary-amount,.net-salary,[data-salary-payable]{font-size:1.8rem!important}
+  table{font-size:.85rem}
+}

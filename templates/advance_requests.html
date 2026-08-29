@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block content %}
+<link rel="stylesheet" href="../boztek_premium_readability.css?v=final3">{% extends "base.html" %}{% block content %}
 <section class="hero"><div><div class="eyebrow">Personel Talepleri</div><h1>Avans Talepleri</h1><p>Personelden gelen talepleri onaylayın veya reddedin.</p></div></section>
 <div class="card"><table class="table"><tr><th>Personel</th><th>Tutar</th><th>Açıklama</th><th>Tarih</th><th>Durum</th><th>İşlem</th></tr>
 {% for r in rows %}<tr class="{% if r.status=='Beklemede' %}unread-row{% endif %}"><td>{{r.full_name}}</td><td>{{'%.2f'|format(r.amount|float)}} TL</td><td>{{r.note or '-'}}</td><td>{{r.created_at}}</td><td><span class="status-badge {{r.status|lower}}">{{r.status}}</span></td><td>{% if r.status=='Beklemede' %}<a class="btn small" href="/admin/advance-requests/{{r.id}}/approve">Onayla</a> <a class="btn small danger" href="/admin/advance-requests/{{r.id}}/reject">Reddet</a>{% else %}-{% endif %}</td></tr>{% else %}<tr><td colspan="6">Avans talebi bulunmuyor.</td></tr>{% endfor %}</table></div>
@@ -32,3 +32,8 @@
 })();
 </script>
 <script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
+<!-- BOZTEK-MAAS-OZETI-V3 -->
+<div class="net-pay-box" style="margin:16px 0">
+  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
+  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+</div>

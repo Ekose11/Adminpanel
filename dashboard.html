@@ -1,4 +1,4 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Giriş</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body class="login-page"><div class="login-card"><div class="login-logo">◆</div><h1>Personel Sistemi</h1><p>Premium yönetim paneli</p><form method="post"><input name="username" placeholder="Kullanıcı adı" autocomplete="username"><input name="password" type="password" placeholder="Şifre" autocomplete="current-password"><button class="btn wide">Giriş Yap</button></form>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="login-error">{{m}}</div>{% endfor %}{% endwith %}</div>
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Giriş</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><link rel="stylesheet" href="boztek_premium_readability.css?v=final3"></head><body class="login-page"><div class="login-card"><div class="login-logo">◆</div><h1>Personel Sistemi</h1><p>Premium yönetim paneli</p><form method="post"><input name="username" placeholder="Kullanıcı adı" autocomplete="username"><input name="password" type="password" placeholder="Şifre" autocomplete="current-password"><button class="btn wide">Giriş Yap</button></form>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="login-error">{{m}}</div>{% endfor %}{% endwith %}</div>
 <!-- phone-status-sync-fix -->
 <script>
 (function () {
@@ -27,4 +27,10 @@
 })();
 </script>
 
-<script src="salary_puantaj_live_sync.js?v=3"></script><script src="yillik_izin_puantaj.js?v=2"></script></body></html>
+<script src="salary_puantaj_live_sync.js?v=3"></script><script src="yillik_izin_puantaj.js?v=2"></script>
+<!-- BOZTEK-MAAS-OZETI-V3 -->
+<div class="net-pay-box" style="margin:16px 0">
+  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
+  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+</div>
+</body></html>

@@ -1,4 +1,4 @@
-<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profil Düzenle</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"></head><body class="personel-bg"><main class="phone-wrap"><section class="phone-hero"><div class="app-logo small">◆</div><div><h1>Profil Düzenle</h1><p>Fotoğraf, telefon ve adres bilgileri server’a kaydedilir.</p></div><a class="btn ghost" href="/personel/panel">Geri</a></section>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}<form method="post" class="glass-card profile-form"><div class="avatar big" id="preview">{% if p.photo_data %}<img src="{{p.photo_data}}">{% else %}{{p.full_name[:1]}}{% endif %}</div><label>Fotoğraf Seç</label><input type="file" accept="image/*" id="photoFile"><input type="hidden" name="photo_data" id="photo_data" value="{{p.photo_data}}"><label>Telefon Numarası</label><input name="phone" value="{{p.phone}}" placeholder="05xx xxx xx xx"><label>Adres</label><textarea name="address" placeholder="Adres bilgisi">{{p.address}}</textarea><button class="btn wide">Profili Kaydet</button></form></main><script>photoFile.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=()=>{photo_data.value=r.result; preview.innerHTML='<img src="'+r.result+'">'}; r.readAsDataURL(f);}</script>
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Profil Düzenle</title><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><link rel="stylesheet" href="../boztek_premium_readability.css?v=final3"></head><body class="personel-bg"><main class="phone-wrap"><section class="phone-hero"><div class="app-logo small">◆</div><div><h1>Profil Düzenle</h1><p>Fotoğraf, telefon ve adres bilgileri server’a kaydedilir.</p></div><a class="btn ghost" href="/personel/panel">Geri</a></section>{% with messages=get_flashed_messages() %}{% for m in messages %}<div class="flash">{{m}}</div>{% endfor %}{% endwith %}<form method="post" class="glass-card profile-form"><div class="avatar big" id="preview">{% if p.photo_data %}<img src="{{p.photo_data}}">{% else %}{{p.full_name[:1]}}{% endif %}</div><label>Fotoğraf Seç</label><input type="file" accept="image/*" id="photoFile"><input type="hidden" name="photo_data" id="photo_data" value="{{p.photo_data}}"><label>Telefon Numarası</label><input name="phone" value="{{p.phone}}" placeholder="05xx xxx xx xx"><label>Adres</label><textarea name="address" placeholder="Adres bilgisi">{{p.address}}</textarea><button class="btn wide">Profili Kaydet</button></form></main><script>photoFile.onchange=e=>{let f=e.target.files[0]; if(!f)return; let r=new FileReader(); r.onload=()=>{photo_data.value=r.result; preview.innerHTML='<img src="'+r.result+'">'}; r.readAsDataURL(f);}</script>
 <!-- phone-status-sync-fix -->
 <script>
 (function () {
@@ -27,4 +27,10 @@
 })();
 </script>
 
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script></body></html>
+<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
+<!-- BOZTEK-MAAS-OZETI-V3 -->
+<div class="net-pay-box" style="margin:16px 0">
+  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
+  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+</div>
+</body></html>

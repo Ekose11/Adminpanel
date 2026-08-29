@@ -1,4 +1,4 @@
-{% extends "base.html" %}
+<link rel="stylesheet" href="../boztek_premium_readability.css?v=final3">{% extends "base.html" %}
 {% block content %}
 <div class="hero"><div class="title">Giriş Çıkış Dosyası</div><div class="subtitle">Tarih seçerek personelin gelip gelmediğini görebilir, CSV dosyası indirebilirsin.</div></div>
 <div class="card"><form method="get" class="form-grid"><div class="field"><label>Tarih seç</label><input type="date" name="day" value="{{day}}"></div><button class="btn">Göster</button><a class="btn btn-green" href="/admin/attendance/export?day={{day}}">Dosya İndir</a></form></div>
@@ -33,3 +33,8 @@
 })();
 </script>
 <script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
+<!-- BOZTEK-MAAS-OZETI-V3 -->
+<div class="net-pay-box" style="margin:16px 0">
+  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
+  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+</div>

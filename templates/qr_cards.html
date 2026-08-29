@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Tek QR</div><h1>Ortak QR Kartı</h1><p>Bütün personel aynı QR'ı okutur. Personel kimliği uygulamadaki giriş hesabından gelir.</p></div></section><div class="card center"><h2>Servis Giriş / Çıkış QR</h2><img class="big-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data={{token}}" alt="Tek QR"><p class="muted">Kod: {{token}}</p><button class="btn" onclick="window.print()">QR Çıktı Al</button></div>{% endblock %}
+<link rel="stylesheet" href="../boztek_premium_readability.css?v=final3">{% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Tek QR</div><h1>Ortak QR Kartı</h1><p>Bütün personel aynı QR'ı okutur. Personel kimliği uygulamadaki giriş hesabından gelir.</p></div></section><div class="card center"><h2>Servis Giriş / Çıkış QR</h2><img class="big-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=320x320&data={{token}}" alt="Tek QR"><p class="muted">Kod: {{token}}</p><button class="btn" onclick="window.print()">QR Çıktı Al</button></div>{% endblock %}
 
 <!-- phone-status-sync-fix -->
 <script>
@@ -28,3 +28,8 @@
 })();
 </script>
 <script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
+<!-- BOZTEK-MAAS-OZETI-V3 -->
+<div class="net-pay-box" style="margin:16px 0">
+  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
+  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+</div>
