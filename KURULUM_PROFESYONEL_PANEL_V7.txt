@@ -1,0 +1,6 @@
+BOZTEK PROFESYONEL PANEL V7
+- Yeni gerçek static tema: static/css/boztek-pro-v7.css
+- Admin navigasyonda günlük prim ve vardiya menüleri görünmez.
+- Geç giriş/erken çıkış UI'sı önceki sürümde kaldırılmış olarak korunur.
+- QR, puantaj, yıllık izin, avans, maaş ve bildirim işlevleri korunur.
+- Render deploy sonrası tarayıcı Ctrl+F5; PWA için eski ana ekran uygulamasını kaldırıp yeniden eklemek önerilir.

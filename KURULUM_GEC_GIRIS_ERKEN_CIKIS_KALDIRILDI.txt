@@ -1,0 +1,3 @@
+Geç giriş / erken çıkış sistemi panel görünümünden kaldırılmıştır.
+Dashboard ve kullanıcı arayüzünde bu iki istatistik gösterilmez.
+QR giriş/çıkış kayıtları ve maaş/puantaj hesabının diğer kuralları korunur.

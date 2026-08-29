@@ -5,7 +5,7 @@
   <title>{{ title or 'Personel Sistemi' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <meta name="theme-color" content="#07111f">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/boztek-premium.css') }}?v=4"></head>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/boztek-premium.css') }}?v=4"><link rel="stylesheet" href="{{ url_for("static", filename="css/boztek-professional.css") }}?v=5"><link rel="stylesheet" href="{{ url_for("static", filename="css/boztek-pro-v7.css") }}?v=7"></head>
 <body>
 <div class="layout">
   <aside class="sidebar">
@@ -23,7 +23,6 @@
       <a href="/admin/advance-requests">💳 Avans Talepleri {% if advance_badge %}<span id="advanceBadge" class="nav-badge">{{advance_badge}}</span>{% endif %}</a>
       <a href="/admin/advances">💸 Avanslar</a>
 
-      <a href="/admin/bonuses">🎁 Günlük Prim</a>
       <a href="/admin/notifications">🔔 Bildirimler {% if notification_badge %}<span id="notificationBadge" class="nav-badge">{{notification_badge}}</span>{% endif %}</a>
       <a href="/admin/reports">📄 Aylık Rapor</a>
       <a href="/admin/logout">🚪 Çıkış</a>

@@ -1,0 +1,40 @@
+
+:root{
+ --bg:#f4f7fb;--surface:#ffffff;--surface2:#eef3f9;--nav:#101828;
+ --primary:#2563eb;--primary2:#4f46e5;--text:#111827;--muted:#667085;
+ --success:#16a34a;--danger:#dc2626;--warning:#d97706;--info:#0891b2;
+ --border:#dbe3ee;--shadow:0 8px 24px rgba(16,24,40,.08)
+}
+*{box-sizing:border-box}
+body{background:var(--bg)!important;color:var(--text)!important;font-family:Inter,Segoe UI,Arial,sans-serif!important}
+.sidebar,.side-nav,.navbar{background:linear-gradient(180deg,#101828,#18253b)!important;color:#fff!important}
+.sidebar a,.side-nav a{color:#dbe4f0!important;border-radius:10px!important}
+.sidebar a:hover,.side-nav a:hover,.sidebar a.active,.side-nav a.active{background:linear-gradient(90deg,var(--primary),var(--primary2))!important;color:#fff!important}
+.card,.panel,.box,.stat-card,.dashboard-card,.salary-card,.hero,.table-container{
+ background:var(--surface)!important;border:1px solid var(--border)!important;
+ border-radius:16px!important;box-shadow:var(--shadow)!important;color:var(--text)!important
+}
+h1,h2,h3,h4,h5,h6,p,span,label,td,th,strong,b{color:var(--text)}
+.stat-value,.amount,.salary-amount,.net-salary,.value,[data-salary-payable]{
+ color:var(--primary2)!important;font-weight:900!important
+}
+.net-pay-box,.payable-box{
+ background:linear-gradient(135deg,#ecfdf3,#f0fdf4)!important;
+ border:2px solid #86efac!important;border-radius:16px!important
+}
+.net-pay-box .value,.payable-box .value,.net-salary,[data-salary-payable]{
+ color:#15803d!important;font-size:clamp(2rem,5vw,3rem)!important
+}
+.badge-success{background:#dcfce7!important;color:#166534!important}
+.badge-danger{background:#fee2e2!important;color:#991b1b!important}
+.badge-warning{background:#fef3c7!important;color:#92400e!important}
+.badge-info{background:#cffafe!important;color:#155e75!important}
+button,.btn{border-radius:10px!important;font-weight:700!important}
+input,select,textarea{background:#fff!important;color:#111827!important;border:1px solid #cbd5e1!important;border-radius:10px!important}
+table{background:#fff!important;color:#111827!important}
+thead{background:#f1f5f9!important}
+@media(max-width:768px){
+ .sidebar,.side-nav{width:100%!important;position:relative!important}
+ .main,.content{padding:12px!important}
+ .stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}

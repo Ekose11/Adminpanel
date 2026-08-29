@@ -1,0 +1,3 @@
+Bu sürümde günlük prim kullanıcı arayüzünden kaldırılmıştır.
+Yeni profesyonel tema static/css/boztek-professional.css üzerinden yüklenir.
+GitHub commit + Render deploy sonrası Ctrl+F5; PWA için uygulamayı kaldırıp yeniden Ana Ekrana Ekle önerilir.
