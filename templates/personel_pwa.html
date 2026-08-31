@@ -57,6 +57,7 @@
         <button class="action green" data-open-scanner="entry"><span>↳</span><b>QR Giriş</b><small>Tek okuma</small></button>
         <button class="action red" data-open-scanner="exit"><span>↰</span><b>QR Çıkış</b><small>Tek okuma</small></button>
         <button class="action blue" data-page="leavePage"><span>✎</span><b>İzin İsteği</b><small>Talep oluştur</small></button>
+        <button class="action purple" data-page="bonusPage"><span>★</span><b>Günlük Prim</b><small>Ay toplamı</small></button>
         <button class="action orange" data-page="notificationsPage"><span>●</span><b>Bildirimler <em id="personNotificationBadge" class="mini-badge hidden">0</em></b><small>Son gelişmeler</small></button>
       </div>
     </section>
@@ -105,6 +106,7 @@
 
 
     <section id="bonusPage" class="page">
+      <div class="page-head"><button class="back" data-page="homePage">‹</button><div><p class="eyebrow">KAZANÇ</p><h2>Günlük Primler</h2></div></div>
       <article class="form-card"><label>Ay seçin<input id="bonusMonth" type="month"></label><div class="mini-total"><span>Aylık toplam</span><strong id="bonusTotal">0 TL</strong></div></article>
       <div id="bonusList" class="list"><div class="empty">Primler yükleniyor…</div></div>
     </section>
@@ -160,11 +162,5 @@
 })();
 </script>
 
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
-</div>
 </body>
 </html>

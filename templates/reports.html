@@ -1,3 +1,4 @@
+{% extends "base.html" %}{% block content %}<section class="hero"><div><div class="eyebrow">Rapor</div><h1>Aylık Rapor</h1><p>Çalışma günü, geç giriş, erken çıkış ve maaş özeti.</p></div></section><div class="card"><a class="btn" href="/admin/reports/pdf">PDF İndir</a></div><div class="card"><table class="table"><tr><th>Personel</th><th>Bölüm</th><th>Gün</th><th>Geç</th><th>Erken</th><th>Avans</th><th>Kalan Maaş</th></tr>{% for r in rows %}{% set s=r.salary|float %}{% set a=r.total_advance|float %}<tr><td>{{r.full_name}}</td><td>{{r.department}}</td><td>{{r.monthly_days}}</td><td>{{r.late_entries}}</td><td>{{r.early_exits}}</td><td>{{'%.2f'|format(a)}} TL</td><td>{{'%.2f'|format(s-a)}} TL</td></tr>{% endfor %}</table></div>{% endblock %}
 
 <!-- phone-status-sync-fix -->
 <script>
@@ -26,9 +27,3 @@
   setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
 })();
 </script>
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
-</div>

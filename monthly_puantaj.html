@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<section class="hero"><div><div class="eyebrow">Ay Sonu</div><h1>Puantaj ve Maaş</h1><p>Tam gün gelmedi 1 günlük, yarım gün 0,5 günlük ücret keser. İzinli ve raporlu günlerde kesinti yapılmaz. Günlük primler maaşa dahil edilmez.</p></div></section>
 
 <div class="card">
   <form method="get" class="form-grid compact">
@@ -87,9 +88,3 @@
   setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
 })();
 </script>
-<script src="salary_puantaj_live_sync.js?v=3"></script><script src="yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
-</div>

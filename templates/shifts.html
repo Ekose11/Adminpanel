@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
+  <div><div class="eyebrow">Rotasyon Şablonu</div><h1>Aylık Vardiya Listesi</h1><p>Excel görünümünde aylık vardiya planı. A=Sabah, B=Akşam, C=Gece, X=İzin/Off.</p></div>
   <div class="clock">{{month}}</div>
 </section>
 <div class="card">
   <form method="get" class="form-grid compact">
     <div class="field"><label>Ay Seç</label><input type="month" name="month" value="{{month}}"></div>
+    <div class="field"><label>&nbsp;</label><button class="btn">Ayı Göster</button> <a class="btn secondary" href="/admin/shifts/pdf?month={{month}}">PDF Çıktı Al</a></div>
   </form>
 </div>
 <div class="shift-legend card">
@@ -24,16 +26,20 @@
   </form>
 </div>
 <div class="card">
+  <h2>Seçili Günlere Vardiya Ata</h2>
   <form method="post" class="form-grid">
     <input type="hidden" name="mode" value="days"><input type="hidden" name="month" value="{{month}}">
     <div class="field"><label>Personel</label><select name="person_id">{% for p in people %}<option value="{{p.id}}">{{p.full_name}}</option>{% endfor %}</select></div>
+    <div class="field"><label>Vardiya</label><select name="shift_name"><option>Sabah</option><option>Akşam</option><option>Gece</option><option>İzin</option><option>Özel</option></select></div>
     <div class="field"><label>Başlangıç</label><input type="time" name="shift_start" value="08:00"></div>
     <div class="field"><label>Bitiş</label><input type="time" name="shift_end" value="16:00"></div>
     <div class="field full"><label>Günler</label><div class="day-grid">{% for d in days %}<label><input type="checkbox" name="days" value="{{d}}"> {{d[-2:]}}</label>{% endfor %}</div></div>
+    <label class="check"><input type="checkbox" name="apply_default" value="1"> Genel vardiya olarak da kaydet</label>
     <button class="btn">Kaydet</button>
   </form>
 </div>
 <div class="card shift-card">
+  <div class="card-head"><h2>{{month}} Rotasyon Tablosu</h2><a class="btn secondary" href="/admin/shifts/pdf?month={{month}}">PDF İndir</a></div>
   <div class="rotation-wrap">
     <table class="rotation-table">
       <thead>
@@ -82,9 +88,3 @@
   setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
 })();
 </script>
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
-</div>

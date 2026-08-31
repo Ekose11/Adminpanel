@@ -5,7 +5,7 @@
   <title>{{ title or 'Personel Sistemi' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <meta name="theme-color" content="#07111f">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/boztek-premium.css') }}?v=4"><link rel="stylesheet" href="{{ url_for("static", filename="css/boztek-professional.css") }}?v=5"><link rel="stylesheet" href="{{ url_for("static", filename="css/boztek-pro-v7.css") }}?v=7"></head>
+</head>
 <body>
 <div class="layout">
   <aside class="sidebar">
@@ -23,6 +23,7 @@
       <a href="/admin/advance-requests">💳 Avans Talepleri {% if advance_badge %}<span id="advanceBadge" class="nav-badge">{{advance_badge}}</span>{% endif %}</a>
       <a href="/admin/advances">💸 Avanslar</a>
 
+      <a href="/admin/bonuses">🎁 Günlük Prim</a>
       <a href="/admin/notifications">🔔 Bildirimler {% if notification_badge %}<span id="notificationBadge" class="nav-badge">{{notification_badge}}</span>{% endif %}</a>
       <a href="/admin/reports">📄 Aylık Rapor</a>
       <a href="/admin/logout">🚪 Çıkış</a>
@@ -86,10 +87,4 @@
 })();
 </script>
 
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
-</div>
 </body></html>
