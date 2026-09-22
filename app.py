@@ -1118,6 +1118,45 @@ def api_employee_shifts():
             items.append({"day": day, "code": shift_code(p.get("shift_name")), "shift_name": p.get("shift_name") or "Sabah", "shift_start": p.get("shift_start") or "09:00", "shift_end": p.get("shift_end") or "18:00", "is_work_day": 1})
     return jsonify({"status":"ok", "month": month, "person": person_summary(p["id"]), "shifts": items})
 
+
+def _adjustment_annual_leave_sync(person_id, work_date, new_status, new_note=''):
+    """Puantajdaki 'leave' kaydını yıllık izin bakiyesiyle senkron tutar.
+    Sadece bu puantaj kaydının gerçekten bakiyeden düşürdüğü izin geri alınır.
+    Onaylı /admin/leaves kaydı aynı günü zaten kapsıyorsa ikinci kez düşülmez.
+    """
+    old = q("select status,note from attendance_adjustments where person_id=%s and work_date=%s", (person_id, work_date), fetch=True, one=True)
+    old_status = str(old.get('status') or '').lower() if old else ''
+    old_note = str(old.get('note') or '') if old else ''
+    old_counted = old_status == 'leave' and 'PUANTAJ_YILLIK_IZIN_DUSULDU' in old_note
+    new_is_leave = str(new_status or '').lower() == 'leave'
+
+    # Aynı kayıt aynı durumda kalıyorsa bakiye tekrar değişmesin.
+    if old_status == 'leave' and new_is_leave:
+        return True, new_note or old_note
+
+    # Önceki puantaj kaydı yıllık izinden düşürdüyse, durum değişince geri ekle.
+    if old_counted and not new_is_leave:
+        q("update personnel set annual_leave_used=greatest(0,annual_leave_used-1), annual_leave_remaining=annual_leave_remaining+1 where id=%s", (person_id,))
+
+    if not new_is_leave:
+        return True, new_note
+
+    # Bu tarih / personel için zaten onaylanmış bir izin kaydı varsa ayrıca düşme.
+    covered = q("""select id from leaves where person_id=%s and status='İzinli'
+                   and %s >= start_date and %s <= end_date limit 1""", (person_id, work_date, work_date), fetch=True, one=True)
+    if covered:
+        return True, new_note
+
+    person = q("select annual_leave_remaining from personnel where id=%s", (person_id,), fetch=True, one=True)
+    remaining = int(person.get('annual_leave_remaining') or 0) if person else 0
+    if remaining < 1:
+        # Eski puantaj leave kaydı varsa ve bu çağrı onu değiştirmeye çalışıyorsa,
+        # eski bakiye zaten geri alınmış olabilir; yine de yeni izin eklenmez.
+        return False, new_note
+
+    q("update personnel set annual_leave_used=annual_leave_used+1, annual_leave_remaining=annual_leave_remaining-1 where id=%s and annual_leave_remaining>0", (person_id,))
+    return True, ((new_note + ' | ') if new_note else '') + 'PUANTAJ_YILLIK_IZIN_DUSULDU'
+
 @app.route("/admin/attendance-adjustment", methods=["POST"])
 def attendance_adjustment():
     guard = admin_required()
@@ -1137,15 +1176,25 @@ def attendance_adjustment():
         flash("Geçerli bir tarih seçmelisiniz.")
         return redirect(f"/admin/monthly-puantaj?month={month}")
     if status == "clear":
+        old = q("select status,note from attendance_adjustments where person_id=%s and work_date=%s", (person_id, work_date), fetch=True, one=True)
+        if old and str(old.get('status') or '').lower() == 'leave' and 'PUANTAJ_YILLIK_IZIN_DUSULDU' in str(old.get('note') or ''):
+            q("update personnel set annual_leave_used=greatest(0,annual_leave_used-1), annual_leave_remaining=annual_leave_remaining+1 where id=%s", (person_id,))
         q("delete from attendance_adjustments where person_id=%s and work_date=%s", (person_id, work_date))
         flash("Özel puantaj kaydı kaldırıldı; otomatik hesaplama kullanılacak.")
     else:
+        ok, synced_note = _adjustment_annual_leave_sync(person_id, work_date, status, note)
+        if not ok:
+            flash("Yıllık izin bakiyesi yetersiz. Önce izin bakiyesini kontrol edin.")
+            return redirect(f"/admin/monthly-puantaj?month={month}")
         q("""insert into attendance_adjustments(person_id,work_date,status,note,created_at)
              values(%s,%s,%s,%s,%s)
              on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""",
-          (person_id, work_date, status, note, now_str()))
-        labels={"half_day":"Yarım gün","absent":"Tam gün gelmedi","leave":"İzinli","reported":"Raporlu","full_day":"Tam gün geldi"}
-        flash(f"Puantaj kaydedildi: {labels.get(status,status)}.")
+          (person_id, work_date, status, synced_note, now_str()))
+        labels={"half_day":"Yarım gün","absent":"Tam gün gelmedi","leave":"Yıllık izin","reported":"Raporlu","full_day":"Tam gün geldi"}
+        if status == 'leave':
+            flash(f"Puantaj kaydedildi: Yıllık izin. 1 gün yıllık izin bakiyesinden düşüldü.")
+        else:
+            flash(f"Puantaj kaydedildi: {labels.get(status,status)}.")
     return redirect(f"/admin/monthly-puantaj?month={month}")
 
 @app.route("/admin/missing-qr")
@@ -1165,9 +1214,13 @@ def missing_qr_resolve():
     note=(request.form.get("note") or "QR unutuldu - yönetici onayı").strip()
     if not person_id or status not in {"full_day","half_day","absent","leave","reported"}:
         flash("Geçersiz kayıt."); return redirect(f"/admin/missing-qr?month={month}")
+    ok, synced_note = _adjustment_annual_leave_sync(person_id, work_date, status, note)
+    if not ok:
+        flash("Yıllık izin bakiyesi yetersiz. Önce izin bakiyesini kontrol edin.")
+        return redirect(f"/admin/missing-qr?month={month}")
     q("""insert into attendance_adjustments(person_id,work_date,status,note,created_at) values(%s,%s,%s,%s,%s)
-         on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""", (person_id,work_date,status,note,now_str()))
-    flash("Eksik QR kaydı puantaja işlendi.")
+         on conflict(person_id,work_date) do update set status=excluded.status,note=excluded.note,created_at=excluded.created_at""", (person_id,work_date,status,synced_note,now_str()))
+    flash("Eksik QR kaydı puantaja işlendi." + (" 1 gün yıllık izin bakiyesinden düşüldü." if status == 'leave' else ""))
     return redirect(f"/admin/missing-qr?month={month}")
 
 @app.route("/admin/monthly-puantaj")

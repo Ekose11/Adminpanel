@@ -15,7 +15,7 @@
     <input type="hidden" name="month" value="{{month}}">
     <div class="field"><label>Personel</label><select name="person_id" required><option value="">Seçiniz</option>{% for r in rows %}<option value="{{r.id}}">{{r.full_name}}</option>{% endfor %}</select></div>
     <div class="field"><label>Tarih</label><input type="date" name="work_date" required></div>
-    <div class="field"><label>Durum</label><select name="status" required><option value="half_day">Yarım Gün</option><option value="absent">Tam Gün Gelmedi</option><option value="leave">İzinli — Kesinti Yok</option><option value="reported">Raporlu — Kesinti Yok</option><option value="clear">Otomatik Hesapla / Kaydı Sil</option></select></div>
+    <div class="field"><label>Durum</label><select name="status" required><option value="half_day">Yarım Gün</option><option value="absent">Tam Gün Gelmedi</option><option value="leave">Yıllık İzin — Kesinti Yok</option><option value="reported">Raporlu — Kesinti Yok</option><option value="clear">Otomatik Hesapla / Kaydı Sil</option></select></div>
     <div class="field"><label>Açıklama</label><input name="note" placeholder="İsteğe bağlı açıklama"></div>
     <div class="field"><label>&nbsp;</label><button class="btn">Puantajı Kaydet</button></div>
   </form>
