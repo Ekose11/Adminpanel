@@ -1,34 +1,52 @@
-
-<!-- phone-status-sync-fix -->
-<script>
-(function () {
-  const FIX_VERSION = 'qr-status-sync-v2';
-  function bust(url) {
-    const u = new URL(url, window.location.origin);
-    u.searchParams.set('_sync', FIX_VERSION);
-    u.searchParams.set('_t', Date.now().toString());
-    return u.pathname + '?' + u.searchParams.toString();
-  }
-  async function refreshPuantaj() {
-    document.querySelectorAll('[data-puantaj-url], a[href*="puantaj"], a[href*="attendance"], a[href*="status"]').forEach(el => {
-      if (el.dataset && el.dataset.puantajUrl) el.dataset.puantajUrl = bust(el.dataset.puantajUrl);
-    });
-    try {
-      const res = await fetch(bust('/api/personel/puantaj'), {cache:'no-store', credentials:'same-origin'});
-      if (!res.ok) return;
-      const data = await res.json();
-      window.dispatchEvent(new CustomEvent('puantaj:updated', {detail:data}));
-    } catch(e) {}
-  }
-  window.addEventListener('focus', refreshPuantaj);
-  window.addEventListener('pageshow', refreshPuantaj);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshPuantaj(); });
-  setInterval(() => { if (!document.hidden) refreshPuantaj(); }, 60000);
-})();
-</script>
-<script src="../salary_puantaj_live_sync.js?v=3"></script><script src="../yillik_izin_puantaj.js?v=2"></script>
-<!-- BOZTEK-MAAS-OZETI-V3 -->
-<div class="net-pay-box" style="margin:16px 0">
-  <div style="font-size:.9rem;opacity:.8">AY SONU ÖDENECEK NET</div>
-  <div class="value" data-salary-payable>Hesaplanıyor...</div>
+{% extends "base.html" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h1>Aylık Rapor</h1>
+    <p>Personel maaşı, puantaj, kesinti, avans ve ay sonunda yatırılacak net tutar.</p>
+  </div>
 </div>
+
+<div class="card">
+  <form method="get" class="form-grid compact">
+    <div class="field"><label>Ay Seç</label><input type="month" name="month" value="{{month}}"></div>
+    <div class="field"><label>&nbsp;</label><button class="btn" type="submit">Hesapla</button></div>
+  </form>
+</div>
+
+<div class="card payroll-wrap">
+  <div class="payroll-table-wrap">
+    <table class="table payroll-table">
+      <thead>
+        <tr>
+          <th>Personel</th><th>Gün</th><th>Geldi</th><th>Yarım Gün</th><th>Eksik QR</th><th>Devamsız</th><th>Maaş</th><th>Kesinti</th><th>Avans</th><th>Ay Sonu Net</th><th>Durum</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td data-label="Personel"><b>{{r.full_name}}</b><br><small>{{r.department}}</small></td>
+          <td data-label="Gün">{{r.workdays}}</td>
+          <td data-label="Geldi">{{r.came_days}}</td>
+          <td data-label="Yarım Gün">{{r.half_days}}<br><small>{{r.half_day_list}}</small></td>
+          <td data-label="Eksik QR">{{r.missing_qr_days}}<br><small>{{r.missing_qr_list}}</small></td>
+          <td data-label="Devamsız">{{r.absent_days}}<br><small>{{r.absent_list}}</small></td>
+          <td data-label="Maaş">{{'%.2f'|format(r.salary)}} TL<br><small>Günlük {{'%.2f'|format(r.daily)}} TL</small></td>
+          <td data-label="Kesinti" class="money-minus">-{{'%.2f'|format(r.deduction)}} TL</td>
+          <td data-label="Avans" class="money-minus">-{{'%.2f'|format(r.total_advance)}} TL</td>
+          <td data-label="Ay Sonu Net"><strong class="payable">{{'%.2f'|format(r.payable)}} TL</strong></td>
+          <td data-label="Durum">{% if r.paid %}<span class="pay-status paid">✓ Ödendi</span><small>{{r.paid_at}}</small>{% else %}<span class="pay-status waiting">Bekliyor</span>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="11" style="text-align:center;padding:30px">Bu ay için aktif personel bulunamadı.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+.payroll-table-wrap{overflow-x:auto}.payroll-table{min-width:1200px}.money-minus{color:#b91c1c;font-weight:700}.payable{font-size:1.1rem;color:#15803d}.pay-status{display:inline-block;padding:5px 9px;border-radius:999px;font-weight:800}.pay-status.paid{background:#dcfce7;color:#166534}.pay-status.waiting{background:#fef3c7;color:#92400e}.payroll-table small{color:#64748b}
+@media(max-width:760px){.payroll-wrap{padding:8px;background:transparent;box-shadow:none}.payroll-table-wrap{overflow:visible}.payroll-table{min-width:0;display:block}.payroll-table thead{display:none}.payroll-table tbody,.payroll-table tr,.payroll-table td{display:block;width:100%}.payroll-table tr{background:#fff;border-radius:16px;padding:13px;margin-bottom:12px;box-shadow:0 8px 24px rgba(15,42,74,.08)}.payroll-table td{border:0!important;padding:7px 0 7px 45%;position:relative;min-height:32px;text-align:right}.payroll-table td:before{content:attr(data-label);position:absolute;left:0;top:7px;width:42%;text-align:left;font-weight:700;color:#64748b}.payable{font-size:1.3rem}}
+</style>
+{% endblock %}

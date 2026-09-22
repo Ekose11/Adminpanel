@@ -1,0 +1,31 @@
+/* BOZTEK readability fix v9 - force readable admin text */
+html,body{background:#f3f6fa!important;color:#172033!important;opacity:1!important}
+body *{opacity:1!important}
+.main{background:#f3f6fa!important;color:#172033!important}
+.card,.panel,.box,.stat,.stat-card,.dashboard-card,.salary-card,.hero,.table-container,.content-card{background:#fff!important;color:#172033!important;border:1px solid #d9e1ec!important;box-shadow:0 6px 20px rgba(15,23,42,.08)!important}
+.hero h1,.hero p,.hero .eyebrow{opacity:1!important}
+.main h1,.main h2,.main h3,.main h4,.main h5,.main h6,.main p,.main span,.main label,.main small,.main strong,.main b,.main div{color:#172033!important;opacity:1!important}
+.table,.table *{opacity:1!important}
+.table{background:#fff!important;color:#172033!important;border-collapse:separate!important}
+.table thead,.table thead tr,.table thead th,.table th{background:#e8eef6!important;color:#1f2937!important;opacity:1!important;text-shadow:none!important;font-weight:900!important}
+.table tbody,.table tbody tr,.table tbody td,.table td{background:#fff!important;color:#172033!important;opacity:1!important;text-shadow:none!important;font-weight:600!important}
+.table tbody td b,.table tbody td strong{color:#111827!important;font-weight:900!important}
+.table tbody td small,.table tbody td .muted{color:#475467!important;opacity:1!important}
+.table a{color:#1d4ed8!important;opacity:1!important}
+.table select,.table input{background:#fff!important;color:#172033!important;opacity:1!important}
+input,select,textarea{background:#fff!important;color:#172033!important;border:1px solid #cbd5e1!important;opacity:1!important}
+input::placeholder,textarea::placeholder{color:#667085!important;opacity:1!important}
+button,.btn{color:#fff!important;background:#2563eb!important;border:0!important;opacity:1!important}
+.btn.ghost,.ghost{background:#eef2ff!important;color:#1e40af!important}
+.sidebar,.side-nav,.navbar{background:#101a2d!important;color:#fff!important;opacity:1!important}
+.sidebar *,.side-nav *,.navbar *,.sidebar a,.side-nav a{color:#fff!important;opacity:1!important}
+.sidebar a:hover,.sidebar a.active,.side-nav a:hover,.side-nav a.active{background:#2563eb!important;color:#fff!important}
+.stat-value,.stat b,.amount,.salary-amount,.net-salary,.value,[data-salary-payable]{color:#1d4ed8!important;font-weight:900!important}
+.net-pay-box,.payable-box{background:#ecfdf3!important;border:2px solid #86efac!important;color:#14532d!important;opacity:1!important}
+.net-pay-box *,.payable-box *{color:#14532d!important;opacity:1!important}
+.net-pay-box .value,.payable-box .value,.net-salary,[data-salary-payable]{color:#15803d!important;font-weight:900!important}
+.badge-success{background:#dcfce7!important;color:#166534!important}.badge-danger{background:#fee2e2!important;color:#991b1b!important}.badge-warning{background:#fef3c7!important;color:#92400e!important}.badge-info{background:#cffafe!important;color:#155e75!important}
+.nav-badge{background:#ef4444!important;color:#fff!important;opacity:1!important}
+a{color:#1d4ed8!important}
+.flash{color:#14532d!important;opacity:1!important}
+@media(max-width:800px){.main{padding:12px!important}.table{min-width:700px}.table-container{overflow-x:auto!important}}

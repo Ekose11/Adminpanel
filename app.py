@@ -1219,8 +1219,9 @@ def notifications_page():
 def reports():
     guard = admin_required()
     if guard: return guard
-    rows = report_rows()
-    return render_template("reports.html", title="Aylık Rapor", rows=rows)
+    month = request.args.get("month") or now_dt().strftime("%Y-%m")
+    rows = monthly_puantaj_rows(month)
+    return render_template("reports.html", title="Aylık Rapor", rows=rows, month=month)
 
 @app.route("/admin/reports/pdf")
 def reports_pdf():
