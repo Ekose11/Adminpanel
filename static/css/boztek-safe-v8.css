@@ -1,0 +1,26 @@
+
+html,body{background:#f3f6fa!important;color:#172033!important}
+.main,.content,.page-content,.container{background:#f3f6fa!important;color:#172033!important}
+.card,.panel,.box,.stat-card,.dashboard-card,.salary-card,.hero,.table-container,.content-card{background:#fff!important;color:#172033!important;border:1px solid #d9e1ec!important;box-shadow:0 6px 20px rgba(15,23,42,.08)!important}
+h1,h2,h3,h4,h5,h6,p,span,label,td,th,div,small,strong,b{color:#172033!important}
+.sidebar,.side-nav,.navbar{background:#101a2d!important;color:#fff!important}
+.sidebar *,.side-nav *,.navbar *,.sidebar a,.side-nav a{color:#fff!important}
+.sidebar a:hover,.sidebar a.active,.side-nav a:hover,.side-nav a.active{background:#2563eb!important;color:#fff!important}
+.stat-value,.stat b,.amount,.salary-amount,.net-salary,.value,[data-salary-payable]{color:#1d4ed8!important;font-weight:900!important;font-size:clamp(1.7rem,4vw,2.7rem)!important}
+.net-pay-box,.payable-box{background:#ecfdf3!important;border:2px solid #86efac!important}
+.net-pay-box *,.payable-box *{color:#14532d!important}
+.net-pay-box .value,.payable-box .value,.net-salary,[data-salary-payable]{color:#15803d!important;font-weight:900!important}
+button,.btn{color:#fff!important;background:#2563eb!important;border:0!important}
+.btn.ghost,.ghost{background:#eef2ff!important;color:#1e40af!important}
+input,select,textarea{background:#fff!important;color:#172033!important;border:1px solid #cbd5e1!important}
+input::placeholder,textarea::placeholder{color:#667085!important}
+table{background:#fff!important;color:#172033!important}
+thead,thead tr,th{background:#eef2f7!important;color:#344054!important}
+td{background:#fff!important;color:#172033!important}
+.badge-success{background:#dcfce7!important;color:#166534!important}
+.badge-danger{background:#fee2e2!important;color:#991b1b!important}
+.badge-warning{background:#fef3c7!important;color:#92400e!important}
+.badge-info{background:#cffafe!important;color:#155e75!important}
+.nav-badge{background:#ef4444!important;color:#fff!important}
+a{color:#1d4ed8}
+@media(max-width:800px){.main,.content,.page-content{padding:12px!important}.stat-value,.stat b,.amount,.salary-amount,.net-salary,.value,[data-salary-payable]{font-size:1.8rem!important}}

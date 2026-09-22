@@ -25,3 +25,19 @@ $('#startScan').onclick=startScanner;
 $('#qrFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();im.onload=()=>{const c=$('#canvas');c.width=im.width;c.height=im.height;const x=c.getContext('2d');x.drawImage(im,0,0);const data=x.getImageData(0,0,c.width,c.height);const code=window.jsQR&&jsQR(data.data,data.width,data.height);if(code?.data)submitQr(code.data);else message($('#qrMsg'),'Fotoğrafta QR bulunamadı')};im.src=URL.createObjectURL(f)};
 if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 if(token)loadMe().catch(()=>{localStorage.removeItem('employee_token');token='';showApp(false)});else showApp(false);
+// Authoritative salary sync: admin and personnel use the same server calculation.
+async function refreshAuthoritativeSalary() {
+  try {
+    const token = localStorage.getItem("token") || localStorage.getItem("employee_token") || sessionStorage.getItem("token");
+    if (!token) return;
+    const r = await fetch("/api/employee-salary?ts="+Date.now(), {
+      cache:"no-store", headers:{"Authorization":"Bearer "+token}
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    window.dispatchEvent(new CustomEvent("authoritativeSalaryUpdated",{detail:d}));
+  } catch(e) {}
+}
+window.addEventListener("pageshow", refreshAuthoritativeSalary);
+window.addEventListener("focus", refreshAuthoritativeSalary);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAuthoritativeSalary()});

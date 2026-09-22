@@ -105,3 +105,19 @@ $('loginBtn').onclick=login;$('enablePushBtn').onclick=enablePersonPush;$('passw
 const today=new Date().toISOString().slice(0,10);$('leaveStart').value=today;$('leaveEnd').value=today;$('bonusMonth').value=today.slice(0,7);$('bonusMonth').addEventListener('change',loadBonuses);
 
 if(token){showApp();refresh()}else showLogin();
+// Authoritative salary sync: admin and personnel use the same server calculation.
+async function refreshAuthoritativeSalary() {
+  try {
+    const token = localStorage.getItem("token") || localStorage.getItem("employee_token") || sessionStorage.getItem("token");
+    if (!token) return;
+    const r = await fetch("/api/employee-salary?ts="+Date.now(), {
+      cache:"no-store", headers:{"Authorization":"Bearer "+token}
+    });
+    if (!r.ok) return;
+    const d = await r.json();
+    window.dispatchEvent(new CustomEvent("authoritativeSalaryUpdated",{detail:d}));
+  } catch(e) {}
+}
+window.addEventListener("pageshow", refreshAuthoritativeSalary);
+window.addEventListener("focus", refreshAuthoritativeSalary);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAuthoritativeSalary()});

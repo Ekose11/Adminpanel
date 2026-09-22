@@ -432,37 +432,70 @@ def warning_for(event_type, event_time):
     return ""
 
 def person_summary(pid):
-    month=now_dt().strftime("%Y-%m")
+    """Tek maaş/puantaj kaynağı: admin Ay Sonu Maaş hesabıyla birebir aynı."""
+    month = now_dt().strftime("%Y-%m")
     p = q("""select p.*,
-        coalesce((select sum(a.amount) from advances a where a.person_id=p.id and substring(coalesce(a.created_at,''),1,7)=%s and a.status in ('Onaylandı','Beklemede')),0) total_advance,
-        coalesce((select sum(b.amount) from daily_bonuses b where b.person_id=p.id and substring(b.bonus_date,1,7)=%s),0) monthly_bonus
+        coalesce((select sum(a.amount) from advances a
+                  where a.person_id=p.id and substring(coalesce(a.created_at,''),1,7)=%s
+                  and a.status in ('Onaylandı','Beklemede')),0) total_advance,
+        coalesce((select sum(b.amount) from daily_bonuses b
+                  where b.person_id=p.id and substring(b.bonus_date,1,7)=%s),0) monthly_bonus
         from personnel p where p.id=%s""", (month, month, pid), fetch=True, one=True)
-    if not p: return None
-    days=workdays_in_month(month); today=today_str(); days=[d for d in days if d<=today]
-    custom=q("select day,is_work_day from monthly_shifts where person_id=%s and month=%s",(pid,month),fetch=True)
-    cmap={r['day']:int(r.get('is_work_day') or 0) for r in custom}; days=[d for d in days if cmap.get(d,1)==1]
-    entries=q("select distinct substring(cast(event_time as text),1,10) d from attendance_logs where person_id=%s and event_type='entry' and substring(cast(event_time as text),1,7)=%s",(pid,month),fetch=True)
-    came={r['d'] for r in entries}
-    leave_days=set(); leaves=q("select start_date,end_date from leaves where person_id=%s and status='İzinli'",(pid,),fetch=True)
-    for lv in leaves:
-        try:
-            d=datetime.strptime(lv['start_date'],'%Y-%m-%d').date(); de=datetime.strptime(lv['end_date'],'%Y-%m-%d').date()
-            while d<=de:
-                iso=d.isoformat()
-                if iso in days: leave_days.add(iso)
-                d+=timedelta(days=1)
-        except Exception: pass
-    absent=len([d for d in days if d not in came and d not in leave_days])
-    salary=float(p.get('salary') or 0); daily=salary/30.0; deduction=daily*absent
-    advance=float(p.get('total_advance') or 0); bonus=float(p.get('monthly_bonus') or 0); payable=max(0.0,salary-deduction-advance)
+    if not p:
+        return None
+
+    # IMPORTANT: Use exactly the same calculation as the admin monthly payroll.
+    payroll = next((r for r in monthly_puantaj_rows(month) if int(r.get("id") or 0) == int(pid)), None)
+    if payroll:
+        salary = float(payroll.get("salary") or 0)
+        daily = float(payroll.get("daily") or salary / 30.0)
+        deduction = float(payroll.get("deduction") or 0)
+        advance = float(payroll.get("total_advance") or 0)
+        payable = float(payroll.get("payable") if payroll.get("payable") is not None else max(0.0, salary-deduction-advance))
+        return {
+            "id": p["id"], "full_name": p["full_name"], "department": p["department"],
+            "salary": salary, "total_advance": advance,
+            # Daily bonuses are retained only as legacy data; they are NOT included in payable salary.
+            "monthly_bonus": 0.0,
+            "absent_days": int(payroll.get("absent_days") or 0),
+            "half_days": int(payroll.get("half_days") or 0),
+            "missing_qr_days": int(payroll.get("missing_qr_days") or 0),
+            "missing_qr_list": payroll.get("missing_qr_list") or "-",
+            "half_day_list": payroll.get("half_day_list") or "-",
+            "absence_deduction": deduction,
+            "daily_salary": daily,
+            "remaining_salary": payable,
+            "payable_salary": payable,
+            "salary_month": month,
+            "annual_leave_total": p.get("annual_leave_total") or 0,
+            "annual_leave_used": p.get("annual_leave_used") or 0,
+            "annual_leave_remaining": p.get("annual_leave_remaining") or 0,
+            "phone": p.get("phone") or "", "address": p.get("address") or "",
+            "photo_url": p.get("photo_url") or "",
+            "shift_name": p.get("shift_name") or "Sabah",
+            "shift_start": p.get("shift_start") or "09:00",
+            "shift_end": p.get("shift_end") or "18:00",
+            "paid": bool(payroll.get("paid")),
+            "paid_amount": float(payroll.get("paid_amount") or 0),
+        }
+
+    # Fallback only if payroll rows cannot be produced.
+    salary=float(p.get("salary") or 0); daily=salary/30.0
+    advance=float(p.get("total_advance") or 0)
     return {
-        "id":p["id"],"full_name":p["full_name"],"department":p["department"],"salary":salary,
-        "total_advance":advance,"monthly_bonus":bonus,"absent_days":absent,"absence_deduction":deduction,
-        "daily_salary":daily,"remaining_salary":payable,"payable_salary":payable,"salary_month":month,
-        "annual_leave_total":p.get("annual_leave_total") or 0,"annual_leave_used":p.get("annual_leave_used") or 0,
-        "annual_leave_remaining":p.get("annual_leave_remaining") or 0,"phone":p.get("phone") or "",
-        "address":p.get("address") or "","photo_url":p.get("photo_url") or "",
-        "shift_name":p.get("shift_name") or "Sabah","shift_start":p.get("shift_start") or "09:00","shift_end":p.get("shift_end") or "18:00",
+        "id":p["id"],"full_name":p["full_name"],"department":p["department"],
+        "salary":salary,"total_advance":advance,"monthly_bonus":0.0,
+        "absent_days":0,"half_days":0,"missing_qr_days":0,"missing_qr_list":"-",
+        "half_day_list":"-","absence_deduction":0.0,"daily_salary":daily,
+        "remaining_salary":max(0.0,salary-advance),"payable_salary":max(0.0,salary-advance),
+        "salary_month":month,"annual_leave_total":p.get("annual_leave_total") or 0,
+        "annual_leave_used":p.get("annual_leave_used") or 0,
+        "annual_leave_remaining":p.get("annual_leave_remaining") or 0,
+        "phone":p.get("phone") or "","address":p.get("address") or "",
+        "photo_url":p.get("photo_url") or "",
+        "shift_name":p.get("shift_name") or "Sabah",
+        "shift_start":p.get("shift_start") or "09:00","shift_end":p.get("shift_end") or "18:00",
+        "paid":False,"paid_amount":0.0,
     }
 
 def today_status_rows():
@@ -518,12 +551,14 @@ def monthly_puantaj_rows(month=None):
         return []
     ids = [x["id"] for x in people]
 
-    attendance = q("""select person_id,substring(cast(event_time as text),1,10) d
+    attendance = q("""select person_id,substring(cast(event_time as text),1,10) d, min(cast(event_time as text)) first_entry
         from attendance_logs where event_type='entry' and substring(cast(event_time as text),1,7)=%s
-        group by person_id,substring(event_time,1,10)""", (month,), fetch=True)
+        group by person_id,substring(cast(event_time as text),1,10)""", (month,), fetch=True)
     came_map = {}
+    first_entry_map = {}
     for r in attendance:
         came_map.setdefault(r['person_id'], set()).add(r['d'])
+        first_entry_map.setdefault(r['person_id'], {})[r['d']] = str(r.get('first_entry') or '')
 
     leaves = q("select person_id,start_date,end_date from leaves where status='İzinli'", fetch=True)
     leave_map = {pid:set() for pid in ids}
@@ -599,11 +634,10 @@ def monthly_puantaj_rows(month=None):
         no_cut_days = set(auto_leave_days) | set(manual_leave) | set(reported_days)
         # Yarım gün işaretlenen tarih tam gün devamsızlığa girmez.
         # QR unutulursa otomatik maaş kesintisi yapılmaz; yönetici Eksik QR ekranından karar verir.
-        missing_qr=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days and d not in manual_full]
-        absent=[]
-        # Yönetici tam gün gelmedi seçtiyse, giriş kaydı olsa bile tam gün kesilir.
-        absent = sorted(set(absent) | set(manual_absent))
-        half_days = sorted(set(half_days) - set(manual_absent))
+        auto_half_days={d for d in came if d in person_days and d not in no_cut_days and str(first_entry_map.get(pid,{}).get(d) or '')[11:16] >= '12:00'}
+        missing_qr=[d for d in person_days if d not in came and d not in no_cut_days and d not in half_days and d not in manual_full and d not in manual_absent]
+        absent = sorted(set(manual_absent))
+        half_days = sorted((set(half_days) | auto_half_days) - set(manual_absent) - set(manual_full) - set(manual_leave) - set(reported_days))
         leave_days = sorted(set(auto_leave_days) | set(manual_leave))
         reported_days = sorted(set(reported_days))
         salary=float(person.get('salary') or 0); daily=salary/30.0
@@ -1375,6 +1409,35 @@ def employee_login():
     token = p.get("token") or secrets.token_hex(24)
     q("update personnel set token=%s where id=%s", (token, p["id"]))
     return jsonify({"status": "ok", "token": token, "person": person_summary(p["id"]), "terminal_qr": TERMINAL_QR_TOKEN})
+
+@app.route("/api/employee-salary", methods=["GET"])
+def employee_salary():
+    token = val("token")
+    p = q("select id from personnel where token=%s and active=1", (token,), fetch=True, one=True)
+    if not p:
+        return jsonify({"status":"error","message":"geçersiz giriş"}), 401
+    data = person_summary(p["id"])
+    if not data:
+        return jsonify({"status":"error","message":"personel bulunamadı"}), 404
+    response = {
+        "status":"ok",
+        "month": data.get("salary_month"),
+        "salary": data.get("salary", 0),
+        "daily_salary": data.get("daily_salary", 0),
+        "absent_days": data.get("absent_days", 0),
+        "half_days": data.get("half_days", 0),
+        "missing_qr_days": data.get("missing_qr_days", 0),
+        "missing_qr_list": data.get("missing_qr_list", "-"),
+        "absence_deduction": data.get("absence_deduction", 0),
+        "advance": data.get("total_advance", 0),
+        "payable_salary": data.get("payable_salary", 0),
+        "remaining_salary": data.get("remaining_salary", 0),
+        "paid": bool(data.get("paid")),
+        "paid_amount": data.get("paid_amount", 0),
+        "annual_leave_remaining": data.get("annual_leave_remaining", 0),
+        "bonus": 0,
+    }
+    return jsonify(response)
 
 @app.route("/api/employee-me", methods=["GET", "POST"])
 def employee_me():

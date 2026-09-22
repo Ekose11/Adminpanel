@@ -1,0 +1,1 @@
+V8: Önceki tema metinleri görünmez hale getirmiş olabileceği için yüksek kontrastlı açık tema eklendi. Maaş rakamları büyük ve görünür. GitHub commit + Render deploy + Ctrl+F5/PWA yeniden ekleme gerekir.
